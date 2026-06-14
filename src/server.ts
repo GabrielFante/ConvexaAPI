@@ -1,5 +1,6 @@
+import { env } from "./shared/env";
 import { app } from "./app";
 
-app.listen(3000, () => {
-    console.log("API running on port 3000");
+app.listen(env.PORT, () => {
+  console.log(`API running on port ${env.PORT}`);
 });
