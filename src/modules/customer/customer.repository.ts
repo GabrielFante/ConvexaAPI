@@ -1,5 +1,9 @@
 import { prisma } from "../../shared/database/prisma";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
+import type {
+  CreateCustomerInput,
+  UpdateCustomerInput,
+} from "./customer.schema";
 
 export const customerRepository = {
   list() {
@@ -15,9 +19,17 @@ export const customerRepository = {
     });
   },
 
-  create(data: { name: string; phone: string; notes?: string }) {
+  create(data: CreateCustomerInput) {
     return prisma.customer.create({
       data: { ...data, businessId: getBusinessId() },
     });
+  },
+
+  update(id: string, data: UpdateCustomerInput) {
+    return prisma.customer.update({ where: { id }, data });
+  },
+
+  delete(id: string) {
+    return prisma.customer.delete({ where: { id } });
   },
 };
