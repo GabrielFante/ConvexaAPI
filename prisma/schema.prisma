@@ -1,13 +1,182 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum AppointmentStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+model Business {
+  id                String   @id @default(uuid()) @db.Uuid
+  name              String
+  slug              String   @unique
+  timezone          String   @default("America/Sao_Paulo")
+  phone             String?
+  metaPhoneNumberId String?
+  metaAccessToken   String?
+  aiSystemPrompt    String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  hours        BusinessHours[]
+  closedDays   ClosedDay[]
+  vacations    Vacation[]
+  timeBlocks   TimeBlock[]
+  services     Service[]
+  employees    Employee[]
+  customers    Customer[]
+  appointments Appointment[]
+}
+
+model BusinessHours {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @db.Uuid
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int
+  opensAt    Int
+  closesAt   Int
+
+  @@index([businessId, dayOfWeek])
+}
+
+model ClosedDay {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @db.Uuid
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  date       DateTime @db.Date
+  reason     String?
+
+  @@unique([businessId, date])
+  @@index([businessId])
+}
+
+model Vacation {
+  id         String    @id @default(uuid()) @db.Uuid
+  businessId String    @db.Uuid
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employeeId String?   @db.Uuid
+  employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  startDate  DateTime  @db.Date
+  endDate    DateTime  @db.Date
+  reason     String?
+
+  @@index([businessId])
+  @@index([employeeId])
+}
+
+model TimeBlock {
+  id         String    @id @default(uuid()) @db.Uuid
+  businessId String    @db.Uuid
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  employeeId String?   @db.Uuid
+  employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  startAt    DateTime
+  endAt      DateTime
+  reason     String?
+
+  @@index([businessId])
+  @@index([employeeId])
+}
+
+model Service {
+  id              String   @id @default(uuid()) @db.Uuid
+  businessId      String   @db.Uuid
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name            String
+  durationMinutes Int
+  priceCents      Int
+  active          Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  employees    EmployeeService[]
+  appointments Appointment[]
+
+  @@index([businessId])
+}
+
+model Employee {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @db.Uuid
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  services     EmployeeService[]
+  hours        EmployeeHours[]
+  vacations    Vacation[]
+  timeBlocks   TimeBlock[]
+  appointments Appointment[]
+
+  @@index([businessId])
+}
+
+model EmployeeService {
+  employeeId String   @db.Uuid
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  serviceId  String   @db.Uuid
+  service    Service  @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  @@id([employeeId, serviceId])
+  @@index([serviceId])
+}
+
+model EmployeeHours {
+  id         String   @id @default(uuid()) @db.Uuid
+  employeeId String   @db.Uuid
+  employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  dayOfWeek  Int
+  startsAt   Int
+  endsAt     Int
+
+  @@index([employeeId, dayOfWeek])
+}
+
+model Customer {
+  id         String   @id @default(uuid()) @db.Uuid
+  businessId String   @db.Uuid
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  name       String
+  phone      String
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  appointments Appointment[]
+
+  @@unique([businessId, phone])
+  @@index([businessId])
+}
+
+model Appointment {
+  id              String            @id @default(uuid()) @db.Uuid
+  businessId      String            @db.Uuid
+  business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customerId      String            @db.Uuid
+  customer        Customer          @relation(fields: [customerId], references: [id])
+  employeeId      String            @db.Uuid
+  employee        Employee          @relation(fields: [employeeId], references: [id])
+  serviceId       String            @db.Uuid
+  service         Service           @relation(fields: [serviceId], references: [id])
+  startAt         DateTime
+  endAt           DateTime
+  status          AppointmentStatus @default(SCHEDULED)
+  priceCents      Int
+  durationMinutes Int
+  notes           String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@index([businessId])
+  @@index([businessId, employeeId, startAt])
+  @@index([businessId, customerId])
 }
