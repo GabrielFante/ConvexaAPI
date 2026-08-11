@@ -16,6 +16,18 @@ export const createBusinessSchema = z.object({
   metaPhoneNumberId: z.string().trim().min(1).optional(),
   metaAccessToken: z.string().trim().min(1).optional(),
   aiSystemPrompt: z.string().trim().min(1).optional(),
+  slotIntervalMinutes: z
+    .number()
+    .int()
+    .min(5, "slotIntervalMinutes deve estar entre 5 e 240")
+    .max(240, "slotIntervalMinutes deve estar entre 5 e 240")
+    .optional(),
+  bufferMinutes: z
+    .number()
+    .int()
+    .min(0, "bufferMinutes deve estar entre 0 e 120")
+    .max(120, "bufferMinutes deve estar entre 0 e 120")
+    .optional(),
 });
 
 export const updateBusinessSchema = createBusinessSchema.partial();
