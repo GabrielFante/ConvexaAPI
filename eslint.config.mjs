@@ -22,5 +22,26 @@ export default tseslint.config(
       ],
     },
   },
+  {
+    files: ["src/**/*.ts"],
+    ignores: ["src/modules/scheduling/**"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "MemberExpression[object.name='prisma'][property.name='appointment']",
+          message:
+            "A tabela de agendamentos só pode ser acessada pelo Scheduling Engine (src/modules/scheduling). Use o schedulingEngine.",
+        },
+        {
+          selector:
+            "MemberExpression[object.name='tx'][property.name='appointment']",
+          message:
+            "A tabela de agendamentos só pode ser acessada pelo Scheduling Engine (src/modules/scheduling). Use o schedulingEngine.",
+        },
+      ],
+    },
+  },
   prettier,
 );
