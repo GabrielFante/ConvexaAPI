@@ -140,9 +140,9 @@ Testes (6, contra fake de Prisma com semântica real de upsert): primeira chamad
 
 ---
 
-## Migrations criadas
+## Migrations
 
-Uma só, ainda **não aplicada**:
+Uma criada neste saneamento:
 
 1. `prisma/migrations/20260812120000_meta_credentials_and_unique_phone_number_id/migration.sql`
 
@@ -153,20 +153,28 @@ ALTER TABLE "Business" ADD COLUMN "metaAppSecret" TEXT;
 CREATE UNIQUE INDEX "Business_metaPhoneNumberId_key" ON "Business"("metaPhoneNumberId");
 ```
 
+### Aplicação
+
+Aplicadas com `prisma migrate deploy`. O banco estava **duas** migrations atrás — a
+`20260811120000_scheduling_engine_config`, do trabalho anterior, também nunca tinha sido aplicada,
+então o Engine rodava contra um schema sem `slotIntervalMinutes`/`bufferMinutes`. As duas subiram
+na ordem, sem erro. Estado verificado depois:
+
+- `prisma migrate status`: "Database schema is up to date!", 4 migrations registradas, nenhuma com rollback
+- `Business`: `slotIntervalMinutes` e `bufferMinutes` NOT NULL com defaults 15 e 0; `metaWabaId` e `metaAppSecret` TEXT NULL
+- `Business_metaPhoneNumberId_key`: índice único criado
+- `Appointment_employee_no_overlap`: `EXCLUDE USING gist ("employeeId" WITH =, tsrange("startAt","endAt",'[)') WITH &&) WHERE (status <> 'CANCELLED')`
+- extensão `btree_gist` 1.7 instalada
+- a única empresa existente pegou os defaults, sem perda de dado
+
 ---
 
 ## O que precisa de conferência manual
 
-1. **Duplicatas antes de aplicar a migration.** O `CREATE UNIQUE INDEX` falha se já existirem duas empresas com o mesmo `metaPhoneNumberId`. Múltiplos `NULL` são aceitos pelo Postgres. Conferir antes:
-   ```sql
-   SELECT "metaPhoneNumberId", count(*) FROM "Business"
-   WHERE "metaPhoneNumberId" IS NOT NULL GROUP BY 1 HAVING count(*) > 1;
-   ```
-2. **SQL da migration escrito à mão.** Sem shadow database não deu para conferir com `prisma migrate diff`. O nome do índice segue a convenção do Prisma (`Business_metaPhoneNumberId_key`), mas confirme o `migrate status` na primeira aplicação.
-3. **`GET /internal/tenants/by-phone-number-id/...` depende dessa migration.** Enquanto o índice único não existir, a resolução continua ambígua na prática, mesmo com o `findUnique` no código.
-4. **`npm ci && npm run build` em máquina limpa** não foi executado — só `npm run build` sobre o `node_modules` atual, que passou.
-5. **Roteamento das rotas novas não foi testado ponta a ponta.** Não há `supertest` no projeto e subir o app num teste exigiria `DATABASE_URL` e conexão real. As montagens em `src/app.ts` foram verificadas por leitura.
-6. **`Customer.name` é NOT NULL.** Um resolve sem `name` grava **string vazia** — é essa a representação de "cliente ainda sem nome" que o preenchimento posterior usa. Trocar para `null` exigiria migration.
+1. **`npm ci && npm run build` em máquina limpa** não foi executado — só `npm run build` sobre o `node_modules` atual, que passou.
+2. **Roteamento das rotas novas não foi testado ponta a ponta.** Não há `supertest` no projeto e subir o app num teste exigiria `DATABASE_URL` e conexão real. As montagens em `src/app.ts` foram verificadas por leitura.
+3. **`Customer.name` é NOT NULL.** Um resolve sem `name` grava **string vazia** — é essa a representação de "cliente ainda sem nome" que o preenchimento posterior usa. Trocar para `null` exigiria migration.
+4. **Nenhum teste roda contra o banco real.** Toda a suíte usa fakes de Prisma em memória. As migrations aplicadas foram conferidas por consulta direta ao `information_schema`/`pg_constraint`, não por teste automatizado.
 
 ## Pendências conhecidas, deixadas de fora de propósito
 
