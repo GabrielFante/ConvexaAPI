@@ -2,6 +2,7 @@ import { AppError } from "../../shared/errors/AppError";
 import { customerRepository } from "./customer.repository";
 import type {
   CreateCustomerInput,
+  ResolveCustomerInput,
   UpdateCustomerInput,
 } from "./customer.schema";
 
@@ -26,6 +27,16 @@ export const customerService = {
 
   create(data: CreateCustomerInput) {
     return customerRepository.create(data);
+  },
+
+  async resolve({ phone, name }: ResolveCustomerInput) {
+    const customer = await customerRepository.upsertByPhone(phone, name ?? "");
+
+    if (name && !customer.name) {
+      return customerRepository.update(customer.id, { name });
+    }
+
+    return customer;
   },
 
   async update(id: string, data: UpdateCustomerInput) {

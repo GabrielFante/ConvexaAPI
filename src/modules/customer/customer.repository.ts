@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../shared/database/prisma";
 import { AppError } from "../../shared/errors/AppError";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
@@ -8,6 +9,13 @@ import type {
 
 function notFound() {
   return new AppError("Cliente não encontrado", 404);
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    error.code === "P2002"
+  );
 }
 
 export const customerRepository = {
@@ -28,6 +36,32 @@ export const customerRepository = {
     return prisma.customer.create({
       data: { ...data, businessId: getBusinessId() },
     });
+  },
+
+  async upsertByPhone(phone: string, name: string) {
+    const businessId = getBusinessId();
+
+    try {
+      return await prisma.customer.upsert({
+        where: { businessId_phone: { businessId, phone } },
+        create: { businessId, phone, name },
+        update: {},
+      });
+    } catch (error) {
+      if (!isUniqueViolation(error)) {
+        throw error;
+      }
+
+      const concurrent = await prisma.customer.findFirst({
+        where: { businessId, phone },
+      });
+
+      if (!concurrent) {
+        throw error;
+      }
+
+      return concurrent;
+    }
   },
 
   async update(id: string, data: UpdateCustomerInput) {

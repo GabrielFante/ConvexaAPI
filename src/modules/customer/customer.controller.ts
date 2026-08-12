@@ -1,7 +1,11 @@
 import type { Request, Response } from "express";
 import { idParam } from "../../shared/validation/common";
 import { customerService } from "./customer.service";
-import { createCustomerSchema, updateCustomerSchema } from "./customer.schema";
+import {
+  createCustomerSchema,
+  resolveCustomerSchema,
+  updateCustomerSchema,
+} from "./customer.schema";
 
 export const customerController = {
   async list(_req: Request, res: Response) {
@@ -19,6 +23,12 @@ export const customerController = {
     const data = createCustomerSchema.parse(req.body);
     const customer = await customerService.create(data);
     res.status(201).json(customer);
+  },
+
+  async resolve(req: Request, res: Response) {
+    const data = resolveCustomerSchema.parse(req.body);
+    const customer = await customerService.resolve(data);
+    res.json(customer);
   },
 
   async update(req: Request, res: Response) {
