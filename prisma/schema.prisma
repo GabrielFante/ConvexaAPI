@@ -19,8 +19,10 @@ model Business {
   slug                String   @unique
   timezone            String   @default("America/Sao_Paulo")
   phone               String?
-  metaPhoneNumberId   String?
+  metaPhoneNumberId   String?  @unique
+  metaWabaId          String?
   metaAccessToken     String?
+  metaAppSecret       String?
   aiSystemPrompt      String?
   slotIntervalMinutes Int      @default(15)
   bufferMinutes       Int      @default(0)

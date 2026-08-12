@@ -20,7 +20,10 @@ export type VacationRecord = Omit<
   endDate: Date;
 };
 
-const secretFields = { metaAccessToken: true } as const;
+const secretFields = {
+  metaAccessToken: true,
+  metaAppSecret: true,
+} as const;
 
 export const businessRepository = {
   create(data: CreateBusinessInput) {

@@ -59,6 +59,43 @@ describe("business schema — timezone", () => {
   });
 });
 
+describe("business schema — campos da Meta", () => {
+  const meta = {
+    metaPhoneNumberId: "1234567890",
+    metaWabaId: "9876543210",
+    metaAccessToken: "EAAG-token",
+    metaAppSecret: "app-secret",
+  };
+
+  it("aceita os campos da Meta na criação", () => {
+    const result = createBusinessSchema.safeParse({
+      ...validBusiness,
+      ...meta,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data).toMatchObject(meta);
+  });
+
+  it("aceita os campos da Meta na atualização", () => {
+    const result = updateBusinessSchema.safeParse({
+      metaWabaId: "9876543210",
+      metaAppSecret: "app-secret",
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("recusa credencial vazia", () => {
+    expect(updateBusinessSchema.safeParse({ metaAppSecret: "" }).success).toBe(
+      false,
+    );
+    expect(updateBusinessSchema.safeParse({ metaWabaId: "" }).success).toBe(
+      false,
+    );
+  });
+});
+
 describe("business schema — datas de dia fechado e férias", () => {
   const rejected = ["2026-12-25T23:00:00-03:00", "25/12/2026", "2026-02-30"];
 
