@@ -1,4 +1,6 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "../../shared/database/prisma";
+import { AppError } from "../../shared/errors/AppError";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
 import type {
   CreateEmployeeInput,
@@ -11,11 +13,40 @@ const employeeInclude = {
   hours: true,
 } as const;
 
+function notFound() {
+  return new AppError("Funcionário não encontrado", 404);
+}
+
 function findScoped(id: string) {
   return prisma.employee.findFirst({
     where: { id, businessId: getBusinessId() },
     include: employeeInclude,
   });
+}
+
+async function assertOwned(
+  tx: Prisma.TransactionClient,
+  id: string,
+  businessId: string,
+) {
+  const owned = await tx.employee.findFirst({
+    where: { id, businessId },
+    select: { id: true },
+  });
+
+  if (!owned) {
+    throw notFound();
+  }
+}
+
+async function findScopedOrFail(id: string) {
+  const employee = await findScoped(id);
+
+  if (!employee) {
+    throw notFound();
+  }
+
+  return employee;
 }
 
 export const employeeRepository = {
@@ -46,39 +77,58 @@ export const employeeRepository = {
     });
   },
 
-  update(id: string, data: UpdateEmployeeInput) {
-    return prisma.employee.update({
-      where: { id },
+  async update(id: string, data: UpdateEmployeeInput) {
+    const { count } = await prisma.employee.updateMany({
+      where: { id, businessId: getBusinessId() },
       data,
-      include: employeeInclude,
     });
+
+    if (!count) {
+      throw notFound();
+    }
+
+    return findScopedOrFail(id);
   },
 
-  delete(id: string) {
-    return prisma.employee.delete({ where: { id } });
+  async delete(id: string) {
+    const { count } = await prisma.employee.deleteMany({
+      where: { id, businessId: getBusinessId() },
+    });
+
+    if (!count) {
+      throw notFound();
+    }
   },
 
   async setServices(id: string, serviceIds: string[]) {
+    const businessId = getBusinessId();
     await prisma.$transaction(async (tx) => {
-      await tx.employeeService.deleteMany({ where: { employeeId: id } });
+      await assertOwned(tx, id, businessId);
+      await tx.employeeService.deleteMany({
+        where: { employeeId: id, employee: { businessId } },
+      });
       if (serviceIds.length) {
         await tx.employeeService.createMany({
           data: serviceIds.map((serviceId) => ({ employeeId: id, serviceId })),
         });
       }
     });
-    return findScoped(id);
+    return findScopedOrFail(id);
   },
 
   async setHours(id: string, hours: EmployeeHourInput[]) {
+    const businessId = getBusinessId();
     await prisma.$transaction(async (tx) => {
-      await tx.employeeHours.deleteMany({ where: { employeeId: id } });
+      await assertOwned(tx, id, businessId);
+      await tx.employeeHours.deleteMany({
+        where: { employeeId: id, employee: { businessId } },
+      });
       if (hours.length) {
         await tx.employeeHours.createMany({
           data: hours.map((hour) => ({ ...hour, employeeId: id })),
         });
       }
     });
-    return findScoped(id);
+    return findScopedOrFail(id);
   },
 };

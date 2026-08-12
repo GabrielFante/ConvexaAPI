@@ -1,6 +1,11 @@
 import { prisma } from "../../shared/database/prisma";
+import { AppError } from "../../shared/errors/AppError";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
 import type { CreateServiceInput, UpdateServiceInput } from "./service.schema";
+
+function notFound() {
+  return new AppError("Serviço não encontrado", 404);
+}
 
 export const serviceRepository = {
   list() {
@@ -22,11 +27,26 @@ export const serviceRepository = {
     });
   },
 
-  update(id: string, data: UpdateServiceInput) {
-    return prisma.service.update({ where: { id }, data });
+  async update(id: string, data: UpdateServiceInput) {
+    const [service] = await prisma.service.updateManyAndReturn({
+      where: { id, businessId: getBusinessId() },
+      data,
+    });
+
+    if (!service) {
+      throw notFound();
+    }
+
+    return service;
   },
 
-  delete(id: string) {
-    return prisma.service.delete({ where: { id } });
+  async delete(id: string) {
+    const { count } = await prisma.service.deleteMany({
+      where: { id, businessId: getBusinessId() },
+    });
+
+    if (!count) {
+      throw notFound();
+    }
   },
 };

@@ -1,4 +1,5 @@
 import { prisma } from "../../shared/database/prisma";
+import { AppError } from "../../shared/errors/AppError";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
 import {
   calendarDayAsDate,
@@ -16,6 +17,10 @@ const appointmentInclude = {
 } as const;
 
 const activeStatuses = ["SCHEDULED", "CONFIRMED", "COMPLETED"] as const;
+
+function notFound() {
+  return new AppError("Agendamento não encontrado", 404);
+}
 
 export type ScheduleDataQuery = {
   day: CalendarDay;
@@ -199,11 +204,17 @@ export const schedulingRepository = {
           return null;
         }
 
-        return tx.appointment.update({
-          where: { id },
+        const [rescheduled] = await tx.appointment.updateManyAndReturn({
+          where: { id, businessId },
           data,
           include: appointmentInclude,
         });
+
+        if (!rescheduled) {
+          throw notFound();
+        }
+
+        return rescheduled;
       },
       { isolationLevel: "Serializable" },
     );
@@ -213,10 +224,16 @@ export const schedulingRepository = {
     id: string,
     status: "CANCELLED" | "CONFIRMED" | "COMPLETED",
   ) {
-    return prisma.appointment.update({
-      where: { id },
+    const [appointment] = await prisma.appointment.updateManyAndReturn({
+      where: { id, businessId: getBusinessId() },
       data: { status },
       include: appointmentInclude,
     });
+
+    if (!appointment) {
+      throw notFound();
+    }
+
+    return appointment;
   },
 };
