@@ -42,6 +42,13 @@ export const businessRepository = {
     });
   },
 
+  findByMetaPhoneNumberId(phoneNumberId: string) {
+    return prisma.business.findUnique({
+      where: { metaPhoneNumberId: phoneNumberId },
+      select: { id: true, name: true, timezone: true, aiSystemPrompt: true },
+    });
+  },
+
   update(data: UpdateBusinessInput) {
     return prisma.business.update({
       where: { id: getBusinessId() },

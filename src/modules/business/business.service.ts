@@ -36,6 +36,22 @@ export const businessService = {
     return getCurrentOrFail();
   },
 
+  async resolveByMetaPhoneNumberId(phoneNumberId: string) {
+    const business =
+      await businessRepository.findByMetaPhoneNumberId(phoneNumberId);
+
+    if (!business) {
+      throw new AppError("Número não cadastrado em nenhuma empresa", 404);
+    }
+
+    return {
+      businessId: business.id,
+      name: business.name,
+      timezone: business.timezone,
+      aiSystemPrompt: business.aiSystemPrompt,
+    };
+  },
+
   async update(data: UpdateBusinessInput) {
     await getCurrentOrFail();
     return businessRepository.update(data);

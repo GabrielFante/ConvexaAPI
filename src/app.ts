@@ -3,6 +3,7 @@ import cors from "cors";
 import { healthRoutes } from "./shared/health/health.routes";
 import { tenantMiddleware } from "./shared/middleware/tenant";
 import {
+  businessInternalRoutes,
   businessPublicRoutes,
   businessRoutes,
 } from "./modules/business/business.routes";
@@ -23,6 +24,7 @@ app.use(express.json());
 app.use(healthRoutes);
 
 app.use("/api", businessPublicRoutes);
+app.use("/internal", businessInternalRoutes);
 
 const apiRoutes = Router();
 apiRoutes.use(tenantMiddleware);

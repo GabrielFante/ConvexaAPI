@@ -5,6 +5,13 @@ export const businessPublicRoutes = Router();
 
 businessPublicRoutes.post("/businesses", businessController.create);
 
+export const businessInternalRoutes = Router();
+
+businessInternalRoutes.get(
+  "/tenants/by-phone-number-id/:phoneNumberId",
+  businessController.resolveByPhoneNumberId,
+);
+
 export const businessRoutes = Router();
 
 businessRoutes.get("/business", businessController.get);

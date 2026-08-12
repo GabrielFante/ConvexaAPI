@@ -84,6 +84,10 @@ export const createVacationSchema = z
     path: ["endDate"],
   });
 
+export const phoneNumberIdParam = z.object({
+  phoneNumberId: z.string().trim().min(1, "phoneNumberId é obrigatório"),
+});
+
 export type CreateBusinessInput = z.infer<typeof createBusinessSchema>;
 export type UpdateBusinessInput = z.infer<typeof updateBusinessSchema>;
 export type BusinessHourInput = z.infer<typeof businessHourSchema>;

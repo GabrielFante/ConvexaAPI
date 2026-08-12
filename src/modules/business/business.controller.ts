@@ -5,6 +5,7 @@ import {
   createBusinessSchema,
   createClosedDaySchema,
   createVacationSchema,
+  phoneNumberIdParam,
   setBusinessHoursSchema,
   updateBusinessSchema,
 } from "./business.schema";
@@ -70,5 +71,12 @@ export const businessController = {
     const { id } = idParam.parse(req.params);
     await businessService.deleteVacation(id);
     res.status(204).send();
+  },
+
+  async resolveByPhoneNumberId(req: Request, res: Response) {
+    const { phoneNumberId } = phoneNumberIdParam.parse(req.params);
+    const tenant =
+      await businessService.resolveByMetaPhoneNumberId(phoneNumberId);
+    res.json(tenant);
   },
 };

@@ -118,6 +118,20 @@ describe("businessRepository — credenciais da Meta", () => {
     expect(created).not.toHaveProperty("metaAppSecret");
   });
 
+  it("resolve pelo número da Meta sem sequer selecionar credenciais", async () => {
+    await businessRepository.findByMetaPhoneNumberId("1234567890");
+
+    expect(prismaMock.business.findUnique).toHaveBeenCalledWith({
+      where: { metaPhoneNumberId: "1234567890" },
+      select: {
+        id: true,
+        name: true,
+        timezone: true,
+        aiSystemPrompt: true,
+      },
+    });
+  });
+
   it("mantém metaAppSecret gravável via update", async () => {
     await runWithTenant(BUSINESS_ID, () =>
       businessRepository.update({ metaAppSecret: APP_SECRET }),
