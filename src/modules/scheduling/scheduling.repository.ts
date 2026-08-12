@@ -1,4 +1,5 @@
 import { prisma } from "../../shared/database/prisma";
+import { withSerializableRetry } from "../../shared/database/serializable-retry";
 import { AppError } from "../../shared/errors/AppError";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
 import {
@@ -175,68 +176,72 @@ export const schedulingRepository = {
   create(data: AppointmentWrite, bufferMinutes: number) {
     const businessId = getBusinessId();
 
-    return prisma.$transaction(
-      async (tx) => {
-        const conflict = await tx.appointment.findFirst({
-          where: conflictWhere(
-            businessId,
-            data.employeeId,
-            data.startAt,
-            data.endAt,
-            bufferMinutes,
-          ),
-          select: { id: true },
-        });
-
-        if (conflict) {
-          return null;
-        }
-
-        return tx.appointment.create({
-          data: { ...data, businessId },
-          include: appointmentInclude,
-        });
-      },
-      { isolationLevel: "Serializable" },
-    );
-  },
-
-  reschedule(id: string, data: AppointmentReschedule, bufferMinutes: number) {
-    const businessId = getBusinessId();
-
-    return prisma.$transaction(
-      async (tx) => {
-        const conflict = await tx.appointment.findFirst({
-          where: {
-            ...conflictWhere(
+    return withSerializableRetry(() =>
+      prisma.$transaction(
+        async (tx) => {
+          const conflict = await tx.appointment.findFirst({
+            where: conflictWhere(
               businessId,
               data.employeeId,
               data.startAt,
               data.endAt,
               bufferMinutes,
             ),
-            id: { not: id },
-          },
-          select: { id: true },
-        });
+            select: { id: true },
+          });
 
-        if (conflict) {
-          return null;
-        }
+          if (conflict) {
+            return null;
+          }
 
-        const [rescheduled] = await tx.appointment.updateManyAndReturn({
-          where: { id, businessId },
-          data,
-          include: appointmentInclude,
-        });
+          return tx.appointment.create({
+            data: { ...data, businessId },
+            include: appointmentInclude,
+          });
+        },
+        { isolationLevel: "Serializable" },
+      ),
+    );
+  },
 
-        if (!rescheduled) {
-          throw notFound();
-        }
+  reschedule(id: string, data: AppointmentReschedule, bufferMinutes: number) {
+    const businessId = getBusinessId();
 
-        return rescheduled;
-      },
-      { isolationLevel: "Serializable" },
+    return withSerializableRetry(() =>
+      prisma.$transaction(
+        async (tx) => {
+          const conflict = await tx.appointment.findFirst({
+            where: {
+              ...conflictWhere(
+                businessId,
+                data.employeeId,
+                data.startAt,
+                data.endAt,
+                bufferMinutes,
+              ),
+              id: { not: id },
+            },
+            select: { id: true },
+          });
+
+          if (conflict) {
+            return null;
+          }
+
+          const [rescheduled] = await tx.appointment.updateManyAndReturn({
+            where: { id, businessId },
+            data,
+            include: appointmentInclude,
+          });
+
+          if (!rescheduled) {
+            throw notFound();
+          }
+
+          return rescheduled;
+        },
+        { isolationLevel: "Serializable" },
+      ),
     );
   },
 
