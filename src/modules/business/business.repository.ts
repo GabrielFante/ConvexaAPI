@@ -8,6 +8,18 @@ import type {
   UpdateBusinessInput,
 } from "./business.schema";
 
+export type ClosedDayRecord = Omit<CreateClosedDayInput, "date"> & {
+  date: Date;
+};
+
+export type VacationRecord = Omit<
+  CreateVacationInput,
+  "startDate" | "endDate"
+> & {
+  startDate: Date;
+  endDate: Date;
+};
+
 const secretFields = { metaAccessToken: true } as const;
 
 export const businessRepository = {
@@ -62,7 +74,7 @@ export const businessRepository = {
     });
   },
 
-  addClosedDay(data: CreateClosedDayInput) {
+  addClosedDay(data: ClosedDayRecord) {
     return prisma.closedDay.create({
       data: { ...data, businessId: getBusinessId() },
     });
@@ -81,7 +93,7 @@ export const businessRepository = {
     });
   },
 
-  addVacation(data: CreateVacationInput) {
+  addVacation(data: VacationRecord) {
     return prisma.vacation.create({
       data: { ...data, businessId: getBusinessId() },
     });

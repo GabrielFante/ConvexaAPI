@@ -1,4 +1,8 @@
 import { AppError } from "../../shared/errors/AppError";
+import {
+  calendarDayAsDate,
+  parseCalendarDay,
+} from "../../shared/utils/timezone";
 import { employeeService } from "../employee/employee.service";
 import { businessRepository } from "./business.repository";
 import type {
@@ -8,6 +12,10 @@ import type {
   CreateVacationInput,
   UpdateBusinessInput,
 } from "./business.schema";
+
+function utcMidnight(value: string): Date {
+  return calendarDayAsDate(parseCalendarDay(value));
+}
 
 async function getCurrentOrFail() {
   const business = await businessRepository.findCurrent();
@@ -47,7 +55,10 @@ export const businessService = {
   },
 
   addClosedDay(data: CreateClosedDayInput) {
-    return businessRepository.addClosedDay(data);
+    return businessRepository.addClosedDay({
+      ...data,
+      date: utcMidnight(data.date),
+    });
   },
 
   async deleteClosedDay(id: string) {
@@ -66,7 +77,11 @@ export const businessService = {
     if (data.employeeId) {
       await employeeService.get(data.employeeId);
     }
-    return businessRepository.addVacation(data);
+    return businessRepository.addVacation({
+      ...data,
+      startDate: utcMidnight(data.startDate),
+      endDate: utcMidnight(data.endDate),
+    });
   },
 
   async deleteVacation(id: string) {

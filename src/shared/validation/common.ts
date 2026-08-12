@@ -1,6 +1,22 @@
 import { z } from "zod";
+import { parseCalendarDay } from "../utils/timezone";
 
 export const uuid = z.uuid("Identificador inválido");
+
+function isCalendarDate(value: string): boolean {
+  try {
+    parseCalendarDay(value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export const calendarDate = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Data deve estar no formato YYYY-MM-DD")
+  .refine(isCalendarDate, { message: "Data inexistente no calendário" });
 
 export const idParam = z.object({ id: uuid });
 

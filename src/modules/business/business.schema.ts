@@ -1,5 +1,6 @@
 import { z } from "zod";
 import {
+  calendarDate,
   dayOfWeek,
   minuteOfDay,
   timezone,
@@ -53,15 +54,15 @@ export const setBusinessHoursSchema = z.object({
 });
 
 export const createClosedDaySchema = z.object({
-  date: z.coerce.date(),
+  date: calendarDate,
   reason: z.string().trim().min(1).optional(),
 });
 
 export const createVacationSchema = z
   .object({
     employeeId: uuid.optional(),
-    startDate: z.coerce.date(),
-    endDate: z.coerce.date(),
+    startDate: calendarDate,
+    endDate: calendarDate,
     reason: z.string().trim().min(1).optional(),
   })
   .refine((data) => data.startDate <= data.endDate, {
