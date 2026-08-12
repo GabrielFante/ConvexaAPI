@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { dayOfWeek, minuteOfDay, uuid } from "../../shared/validation/common";
+import {
+  dayOfWeek,
+  minuteOfDay,
+  timezone,
+  uuid,
+} from "../../shared/validation/common";
 
 export const createBusinessSchema = z.object({
   name: z.string().trim().min(1, "name é obrigatório"),
@@ -11,7 +16,7 @@ export const createBusinessSchema = z.object({
       /^[a-z0-9-]+$/,
       "slug deve conter apenas letras minúsculas, números e hífens",
     ),
-  timezone: z.string().trim().min(1).optional(),
+  timezone: timezone.optional(),
   phone: z.string().trim().min(1).optional(),
   metaPhoneNumberId: z.string().trim().min(1).optional(),
   metaAccessToken: z.string().trim().min(1).optional(),

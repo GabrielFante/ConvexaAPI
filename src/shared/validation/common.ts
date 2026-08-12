@@ -4,6 +4,15 @@ export const uuid = z.uuid("Identificador inválido");
 
 export const idParam = z.object({ id: uuid });
 
+const supportedTimezones = new Set(Intl.supportedValuesOf("timeZone"));
+
+export const timezone = z
+  .string()
+  .trim()
+  .refine((value) => supportedTimezones.has(value), {
+    message: "timezone deve ser um fuso horário IANA válido",
+  });
+
 export const dayOfWeek = z
   .number()
   .int()
