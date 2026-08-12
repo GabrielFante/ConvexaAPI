@@ -8,14 +8,17 @@ import type {
   UpdateBusinessInput,
 } from "./business.schema";
 
+const secretFields = { metaAccessToken: true } as const;
+
 export const businessRepository = {
   create(data: CreateBusinessInput) {
-    return prisma.business.create({ data });
+    return prisma.business.create({ data, omit: secretFields });
   },
 
   findCurrent() {
     return prisma.business.findUnique({
       where: { id: getBusinessId() },
+      omit: secretFields,
       include: {
         hours: { orderBy: { dayOfWeek: "asc" } },
         closedDays: { orderBy: { date: "asc" } },
@@ -25,7 +28,11 @@ export const businessRepository = {
   },
 
   update(data: UpdateBusinessInput) {
-    return prisma.business.update({ where: { id: getBusinessId() }, data });
+    return prisma.business.update({
+      where: { id: getBusinessId() },
+      data,
+      omit: secretFields,
+    });
   },
 
   delete() {
