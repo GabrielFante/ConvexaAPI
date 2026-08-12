@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { dayOfWeek, minuteOfDay, uuid } from "../../shared/validation/common";
+import {
+  dayOfWeek,
+  hasOverlappingRanges,
+  minuteOfDay,
+  OVERLAPPING_RANGES_MESSAGE,
+  uuid,
+} from "../../shared/validation/common";
 
 export const employeeHourSchema = z
   .object({
@@ -12,11 +18,23 @@ export const employeeHourSchema = z
     path: ["endsAt"],
   });
 
+const employeeHoursArray = z.array(employeeHourSchema).refine(
+  (hours) =>
+    !hasOverlappingRanges(
+      hours.map((hour) => ({
+        dayOfWeek: hour.dayOfWeek,
+        start: hour.startsAt,
+        end: hour.endsAt,
+      })),
+    ),
+  { message: OVERLAPPING_RANGES_MESSAGE },
+);
+
 export const createEmployeeSchema = z.object({
   name: z.string().trim().min(1, "name é obrigatório"),
   active: z.boolean().optional(),
   serviceIds: z.array(uuid).optional(),
-  hours: z.array(employeeHourSchema).optional(),
+  hours: employeeHoursArray.optional(),
 });
 
 export const updateEmployeeSchema = z.object({
@@ -29,7 +47,7 @@ export const setEmployeeServicesSchema = z.object({
 });
 
 export const setEmployeeHoursSchema = z.object({
-  hours: z.array(employeeHourSchema),
+  hours: employeeHoursArray,
 });
 
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;

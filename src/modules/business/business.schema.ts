@@ -2,7 +2,9 @@ import { z } from "zod";
 import {
   calendarDate,
   dayOfWeek,
+  hasOverlappingRanges,
   minuteOfDay,
+  OVERLAPPING_RANGES_MESSAGE,
   timezone,
   uuid,
 } from "../../shared/validation/common";
@@ -50,7 +52,17 @@ const businessHourSchema = z
   });
 
 export const setBusinessHoursSchema = z.object({
-  hours: z.array(businessHourSchema),
+  hours: z.array(businessHourSchema).refine(
+    (hours) =>
+      !hasOverlappingRanges(
+        hours.map((hour) => ({
+          dayOfWeek: hour.dayOfWeek,
+          start: hour.opensAt,
+          end: hour.closesAt,
+        })),
+      ),
+    { message: OVERLAPPING_RANGES_MESSAGE },
+  ),
 });
 
 export const createClosedDaySchema = z.object({

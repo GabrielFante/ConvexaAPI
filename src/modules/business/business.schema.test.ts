@@ -3,6 +3,7 @@ import {
   createBusinessSchema,
   createClosedDaySchema,
   createVacationSchema,
+  setBusinessHoursSchema,
   updateBusinessSchema,
 } from "./business.schema";
 
@@ -99,5 +100,51 @@ describe("business schema — datas de dia fechado e férias", () => {
         endDate: "2026-12-24",
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("business schema — faixas de funcionamento", () => {
+  it("rejeita faixas sobrepostas no mesmo dia da semana", () => {
+    const result = setBusinessHoursSchema.safeParse({
+      hours: [
+        { dayOfWeek: 1, opensAt: 540, closesAt: 1080 },
+        { dayOfWeek: 1, opensAt: 600, closesAt: 720 },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("aceita intervalo de almoço no mesmo dia", () => {
+    const result = setBusinessHoursSchema.safeParse({
+      hours: [
+        { dayOfWeek: 1, opensAt: 540, closesAt: 720 },
+        { dayOfWeek: 1, opensAt: 780, closesAt: 1080 },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("aceita faixas encostadas no mesmo dia", () => {
+    const result = setBusinessHoursSchema.safeParse({
+      hours: [
+        { dayOfWeek: 1, opensAt: 540, closesAt: 720 },
+        { dayOfWeek: 1, opensAt: 720, closesAt: 1080 },
+      ],
+    });
+
+    expect(result.success).toBe(true);
+  });
+
+  it("aceita o mesmo horário em dias diferentes", () => {
+    const result = setBusinessHoursSchema.safeParse({
+      hours: [
+        { dayOfWeek: 1, opensAt: 540, closesAt: 1080 },
+        { dayOfWeek: 2, opensAt: 540, closesAt: 1080 },
+      ],
+    });
+
+    expect(result.success).toBe(true);
   });
 });

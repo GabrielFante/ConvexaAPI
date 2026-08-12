@@ -41,6 +41,35 @@ export const minuteOfDay = z
   .min(0, "Horário deve estar entre 0 e 1440 minutos")
   .max(1440, "Horário deve estar entre 0 e 1440 minutos");
 
+type DayRange = { dayOfWeek: number; start: number; end: number };
+
+export const OVERLAPPING_RANGES_MESSAGE =
+  "Faixas de horário do mesmo dia da semana não podem se sobrepor";
+
+export function hasOverlappingRanges(ranges: DayRange[]): boolean {
+  const byDayOfWeek = new Map<number, DayRange[]>();
+
+  for (const range of ranges) {
+    const sameDay = byDayOfWeek.get(range.dayOfWeek) ?? [];
+    sameDay.push(range);
+    byDayOfWeek.set(range.dayOfWeek, sameDay);
+  }
+
+  for (const sameDay of byDayOfWeek.values()) {
+    let maxEnd = Number.NEGATIVE_INFINITY;
+
+    for (const range of [...sameDay].sort((a, b) => a.start - b.start)) {
+      if (range.start < maxEnd) {
+        return true;
+      }
+
+      maxEnd = Math.max(maxEnd, range.end);
+    }
+  }
+
+  return false;
+}
+
 export const timeRange = z
   .object({ startsAt: minuteOfDay, endsAt: minuteOfDay })
   .refine((data) => data.startsAt < data.endsAt, {
