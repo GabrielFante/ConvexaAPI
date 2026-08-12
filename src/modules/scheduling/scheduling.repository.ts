@@ -46,6 +46,24 @@ export type AppointmentReschedule = {
   endAt: Date;
 };
 
+function conflictWhere(
+  businessId: string,
+  employeeId: string,
+  startAt: Date,
+  endAt: Date,
+  bufferMinutes: number,
+) {
+  const buffer = bufferMinutes * MINUTE_MS;
+
+  return {
+    businessId,
+    employeeId,
+    status: { in: [...activeStatuses] },
+    startAt: { lt: new Date(endAt.getTime() + buffer) },
+    endAt: { gt: new Date(startAt.getTime() - buffer) },
+  };
+}
+
 function overlappingWhere(employeeIds: string[], start: Date, end: Date) {
   return {
     businessId: getBusinessId(),
@@ -154,19 +172,19 @@ export const schedulingRepository = {
     });
   },
 
-  create(data: AppointmentWrite) {
+  create(data: AppointmentWrite, bufferMinutes: number) {
     const businessId = getBusinessId();
 
     return prisma.$transaction(
       async (tx) => {
         const conflict = await tx.appointment.findFirst({
-          where: {
+          where: conflictWhere(
             businessId,
-            employeeId: data.employeeId,
-            status: { in: [...activeStatuses] },
-            startAt: { lt: data.endAt },
-            endAt: { gt: data.startAt },
-          },
+            data.employeeId,
+            data.startAt,
+            data.endAt,
+            bufferMinutes,
+          ),
           select: { id: true },
         });
 
@@ -183,19 +201,21 @@ export const schedulingRepository = {
     );
   },
 
-  reschedule(id: string, data: AppointmentReschedule) {
+  reschedule(id: string, data: AppointmentReschedule, bufferMinutes: number) {
     const businessId = getBusinessId();
 
     return prisma.$transaction(
       async (tx) => {
         const conflict = await tx.appointment.findFirst({
           where: {
-            businessId,
-            employeeId: data.employeeId,
+            ...conflictWhere(
+              businessId,
+              data.employeeId,
+              data.startAt,
+              data.endAt,
+              bufferMinutes,
+            ),
             id: { not: id },
-            status: { in: [...activeStatuses] },
-            startAt: { lt: data.endAt },
-            endAt: { gt: data.startAt },
           },
           select: { id: true },
         });

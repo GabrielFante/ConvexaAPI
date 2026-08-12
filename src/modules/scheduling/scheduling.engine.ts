@@ -244,16 +244,19 @@ export const schedulingEngine = {
 
     assertBookable(context, { employeeId: input.employeeId, startAt, endAt });
 
-    const appointment = await schedulingRepository.create({
-      customerId: input.customerId,
-      employeeId: input.employeeId,
-      serviceId: input.serviceId,
-      startAt,
-      endAt,
-      priceCents: service.priceCents,
-      durationMinutes: service.durationMinutes,
-      notes: input.notes,
-    });
+    const appointment = await schedulingRepository.create(
+      {
+        customerId: input.customerId,
+        employeeId: input.employeeId,
+        serviceId: input.serviceId,
+        startAt,
+        endAt,
+        priceCents: service.priceCents,
+        durationMinutes: service.durationMinutes,
+        notes: input.notes,
+      },
+      config.bufferMinutes,
+    );
 
     if (!appointment) {
       const conflict = violationErrors.APPOINTMENT_CONFLICT;
@@ -324,11 +327,15 @@ export const schedulingEngine = {
       ignoreAppointmentId: id,
     });
 
-    const rescheduled = await schedulingRepository.reschedule(id, {
-      employeeId,
-      startAt,
-      endAt,
-    });
+    const rescheduled = await schedulingRepository.reschedule(
+      id,
+      {
+        employeeId,
+        startAt,
+        endAt,
+      },
+      config.bufferMinutes,
+    );
 
     if (!rescheduled) {
       const conflict = violationErrors.APPOINTMENT_CONFLICT;

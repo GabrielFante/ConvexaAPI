@@ -236,7 +236,20 @@ describe("schedulingEngine.createAppointment", () => {
         durationMinutes: 60,
         priceCents: 5000,
       }),
+      expect.any(Number),
     );
+  });
+
+  it("repassa o buffer configurado para o re-check da transação", async () => {
+    repository.getConfig.mockResolvedValue({
+      timezone: TIMEZONE,
+      slotIntervalMinutes: 30,
+      bufferMinutes: 10,
+    });
+
+    await schedulingEngine.createAppointment(createInput());
+
+    expect(repository.create).toHaveBeenCalledWith(expect.anything(), 10);
   });
 
   it("traduz corrida de escrita em conflito", async () => {
@@ -307,11 +320,15 @@ describe("schedulingEngine.rescheduleAppointment", () => {
       startAt: at(10, 30),
     });
 
-    expect(repository.reschedule).toHaveBeenCalledWith("appt-1", {
-      employeeId: employee.id,
-      startAt: at(10, 30),
-      endAt: at(11, 30),
-    });
+    expect(repository.reschedule).toHaveBeenCalledWith(
+      "appt-1",
+      {
+        employeeId: employee.id,
+        startAt: at(10, 30),
+        endAt: at(11, 30),
+      },
+      expect.any(Number),
+    );
   });
 
   it("recusa reagendar um agendamento cancelado", async () => {

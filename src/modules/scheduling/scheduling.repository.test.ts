@@ -22,12 +22,46 @@ const db = vi.hoisted(() => {
     endAt: Date;
   };
   type ScopedWhere = { id: string; businessId: string };
+  type ConflictWhere = {
+    businessId: string;
+    employeeId: string;
+    status: { in: string[] };
+    startAt: { lt: Date };
+    endAt: { gt: Date };
+    id?: { not: string };
+  };
 
   const state = { appointments: [] as Appointment[] };
 
   const client = {
     appointment: {
-      findFirst: vi.fn(() => Promise.resolve(null)),
+      findFirst: vi.fn((args: { where: ConflictWhere }) =>
+        Promise.resolve(
+          state.appointments.find(
+            (row) =>
+              row.businessId === args.where.businessId &&
+              row.employeeId === args.where.employeeId &&
+              args.where.status.in.includes(row.status) &&
+              row.id !== args.where.id?.not &&
+              row.startAt.getTime() < args.where.startAt.lt.getTime() &&
+              row.endAt.getTime() > args.where.endAt.gt.getTime(),
+          ) ?? null,
+        ),
+      ),
+      create: vi.fn(
+        (args: {
+          data: Omit<Appointment, "id" | "status"> & { status?: string };
+        }) => {
+          const created = {
+            ...args.data,
+            id: `apt-${state.appointments.length + 1}`,
+            status: args.data.status ?? "SCHEDULED",
+          };
+
+          state.appointments.push(created);
+          return Promise.resolve({ ...created });
+        },
+      ),
       updateManyAndReturn: vi.fn(
         (args: { where: ScopedWhere; data: Partial<Appointment> }) => {
           const appointment = state.appointments.find(
@@ -100,11 +134,15 @@ describe("schedulingRepository — escopo de tenant nas escritas", () => {
 
   it("reagenda o agendamento do próprio tenant", async () => {
     const appointment = await runWithTenant(TENANT_B, () =>
-      schedulingRepository.reschedule(APPOINTMENT_OF_B, {
-        employeeId: "emp-do-b",
-        startAt: NEW_START,
-        endAt: NEW_END,
-      }),
+      schedulingRepository.reschedule(
+        APPOINTMENT_OF_B,
+        {
+          employeeId: "emp-do-b",
+          startAt: NEW_START,
+          endAt: NEW_END,
+        },
+        0,
+      ),
     );
 
     expect(appointment?.startAt).toEqual(NEW_START);
@@ -112,17 +150,73 @@ describe("schedulingRepository — escopo de tenant nas escritas", () => {
 
   it("não reagenda agendamento de outro tenant e responde 404", async () => {
     const attempt = runWithTenant(TENANT_A, () =>
-      schedulingRepository.reschedule(APPOINTMENT_OF_B, {
-        employeeId: "emp-do-b",
-        startAt: NEW_START,
-        endAt: NEW_END,
-      }),
+      schedulingRepository.reschedule(
+        APPOINTMENT_OF_B,
+        {
+          employeeId: "emp-do-b",
+          startAt: NEW_START,
+          endAt: NEW_END,
+        },
+        0,
+      ),
     );
 
     await expect(attempt).rejects.toMatchObject({
       statusCode: 404,
       message: "Agendamento não encontrado",
     });
+    expect(db.state.appointments[0]?.startAt).toEqual(START);
+  });
+});
+
+describe("schedulingRepository — buffer no re-check da transação", () => {
+  const write = {
+    customerId: "cus-1",
+    serviceId: "svc-1",
+    employeeId: "emp-do-b",
+    startAt: END,
+    endAt: NEW_START,
+    priceCents: 5000,
+    durationMinutes: 60,
+  };
+
+  it("acusa conflito ao encostar em um agendamento existente quando há buffer", async () => {
+    const created = await runWithTenant(TENANT_B, () =>
+      schedulingRepository.create(write, 10),
+    );
+
+    expect(created).toBeNull();
+    expect(db.state.appointments).toHaveLength(1);
+  });
+
+  it("aceita o encaixe imediatamente após o agendamento existente quando não há buffer", async () => {
+    const created = await runWithTenant(TENANT_B, () =>
+      schedulingRepository.create(write, 0),
+    );
+
+    expect(created).not.toBeNull();
+    expect(db.state.appointments).toHaveLength(2);
+  });
+
+  it("acusa conflito ao reagendar para um horário colado em outro agendamento", async () => {
+    db.state.appointments.push({
+      id: "outro-agendamento",
+      businessId: TENANT_B,
+      employeeId: "emp-do-b",
+      status: "SCHEDULED",
+      startAt: NEW_END,
+      endAt: new Date(NEW_END.getTime() + 60 * 60 * 1000),
+    });
+
+    const rescheduled = await runWithTenant(TENANT_B, () =>
+      schedulingRepository.reschedule(
+        APPOINTMENT_OF_B,
+        { employeeId: "emp-do-b", startAt: NEW_START, endAt: NEW_END },
+        10,
+      ),
+    );
+
+    expect(rescheduled).toBeNull();
     expect(db.state.appointments[0]?.startAt).toEqual(START);
   });
 });
