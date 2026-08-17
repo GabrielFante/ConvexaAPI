@@ -1,9 +1,5 @@
 import { z } from "zod";
-import { uuid } from "../../shared/validation/common";
-
-const instant = z.iso
-  .datetime({ offset: true, message: "Use data e hora ISO-8601 com fuso" })
-  .pipe(z.coerce.date());
+import { instant, uuid } from "../../shared/validation/common";
 
 export const createTimeBlockSchema = z
   .object({
