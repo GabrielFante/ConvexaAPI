@@ -90,6 +90,16 @@ type EligibleEmployee = {
   hours: { dayOfWeek: number; startsAt: number; endsAt: number }[];
 };
 
+async function loadOrFail(id: string) {
+  const appointment = await schedulingRepository.findById(id);
+
+  if (!appointment) {
+    throw new AppError("Agendamento não encontrado", 404);
+  }
+
+  return appointment;
+}
+
 async function loadConfig(): Promise<ScheduleConfig> {
   const config = await schedulingRepository.getConfig();
 
@@ -267,11 +277,7 @@ export const schedulingEngine = {
   },
 
   async cancelAppointment(id: string) {
-    const appointment = await schedulingRepository.findById(id);
-
-    if (!appointment) {
-      throw new AppError("Agendamento não encontrado", 404);
-    }
+    const appointment = await loadOrFail(id);
 
     if (appointment.status === "CANCELLED") {
       throw new AppError("Agendamento já está cancelado", 409);
@@ -287,12 +293,44 @@ export const schedulingEngine = {
     return schedulingRepository.updateStatus(id, "CANCELLED");
   },
 
-  async rescheduleAppointment(id: string, input: RescheduleAppointmentInput) {
-    const appointment = await schedulingRepository.findById(id);
+  async confirmAppointment(id: string) {
+    const appointment = await loadOrFail(id);
 
-    if (!appointment) {
-      throw new AppError("Agendamento não encontrado", 404);
+    if (appointment.status === "CONFIRMED") {
+      throw new AppError("Agendamento já está confirmado", 409);
     }
+
+    if (appointment.status !== "SCHEDULED") {
+      throw new AppError(
+        appointment.status === "CANCELLED"
+          ? "Não é possível confirmar um agendamento cancelado"
+          : "Não é possível confirmar um agendamento já concluído",
+        409,
+      );
+    }
+
+    return schedulingRepository.updateStatus(id, "CONFIRMED");
+  },
+
+  async completeAppointment(id: string) {
+    const appointment = await loadOrFail(id);
+
+    if (appointment.status === "COMPLETED") {
+      throw new AppError("Agendamento já está concluído", 409);
+    }
+
+    if (appointment.status === "CANCELLED") {
+      throw new AppError(
+        "Não é possível concluir um agendamento cancelado",
+        409,
+      );
+    }
+
+    return schedulingRepository.updateStatus(id, "COMPLETED");
+  },
+
+  async rescheduleAppointment(id: string, input: RescheduleAppointmentInput) {
+    const appointment = await loadOrFail(id);
 
     if (
       appointment.status !== "SCHEDULED" &&

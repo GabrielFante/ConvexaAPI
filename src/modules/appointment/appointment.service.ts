@@ -13,6 +13,14 @@ export const appointmentService = {
     return schedulingEngine.cancelAppointment(id);
   },
 
+  confirm(id: string) {
+    return schedulingEngine.confirmAppointment(id);
+  },
+
+  complete(id: string) {
+    return schedulingEngine.completeAppointment(id);
+  },
+
   reschedule(id: string, data: RescheduleAppointmentInput) {
     return schedulingEngine.rescheduleAppointment(id, data);
   },

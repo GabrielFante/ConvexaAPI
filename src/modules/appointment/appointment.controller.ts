@@ -19,6 +19,18 @@ export const appointmentController = {
     res.json(appointment);
   },
 
+  async confirm(req: Request, res: Response) {
+    const { id } = idParam.parse(req.params);
+    const appointment = await appointmentService.confirm(id);
+    res.json(appointment);
+  },
+
+  async complete(req: Request, res: Response) {
+    const { id } = idParam.parse(req.params);
+    const appointment = await appointmentService.complete(id);
+    res.json(appointment);
+  },
+
   async reschedule(req: Request, res: Response) {
     const { id } = idParam.parse(req.params);
     const data = rescheduleAppointmentSchema.parse(req.body);

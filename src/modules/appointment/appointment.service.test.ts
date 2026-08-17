@@ -7,6 +7,8 @@ vi.mock("../scheduling/scheduling.engine", () => ({
   schedulingEngine: {
     createAppointment: vi.fn(),
     cancelAppointment: vi.fn(),
+    confirmAppointment: vi.fn(),
+    completeAppointment: vi.fn(),
     rescheduleAppointment: vi.fn(),
   },
 }));
@@ -71,6 +73,58 @@ describe("appointmentService.cancel", () => {
     await expect(appointmentService.cancel(APPOINTMENT)).rejects.toMatchObject({
       statusCode: 409,
     });
+  });
+});
+
+describe("appointmentService.confirm", () => {
+  it("delega a confirmação ao scheduling engine", async () => {
+    vi.mocked(schedulingEngine.confirmAppointment).mockResolvedValue({
+      id: APPOINTMENT,
+      status: "CONFIRMED",
+    } as Awaited<ReturnType<typeof schedulingEngine.confirmAppointment>>);
+
+    const appointment = await appointmentService.confirm(APPOINTMENT);
+
+    expect(schedulingEngine.confirmAppointment).toHaveBeenCalledWith(
+      APPOINTMENT,
+    );
+    expect(appointment).toMatchObject({ status: "CONFIRMED" });
+  });
+
+  it("propaga a recusa de confirmar agendamento cancelado", async () => {
+    vi.mocked(schedulingEngine.confirmAppointment).mockRejectedValue(
+      new AppError("Não é possível confirmar um agendamento cancelado", 409),
+    );
+
+    await expect(appointmentService.confirm(APPOINTMENT)).rejects.toMatchObject(
+      { statusCode: 409 },
+    );
+  });
+});
+
+describe("appointmentService.complete", () => {
+  it("delega a conclusão ao scheduling engine", async () => {
+    vi.mocked(schedulingEngine.completeAppointment).mockResolvedValue({
+      id: APPOINTMENT,
+      status: "COMPLETED",
+    } as Awaited<ReturnType<typeof schedulingEngine.completeAppointment>>);
+
+    const appointment = await appointmentService.complete(APPOINTMENT);
+
+    expect(schedulingEngine.completeAppointment).toHaveBeenCalledWith(
+      APPOINTMENT,
+    );
+    expect(appointment).toMatchObject({ status: "COMPLETED" });
+  });
+
+  it("propaga a recusa de concluir duas vezes", async () => {
+    vi.mocked(schedulingEngine.completeAppointment).mockRejectedValue(
+      new AppError("Agendamento já está concluído", 409),
+    );
+
+    await expect(
+      appointmentService.complete(APPOINTMENT),
+    ).rejects.toMatchObject({ statusCode: 409 });
   });
 });
 

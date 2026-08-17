@@ -300,6 +300,108 @@ describe("schedulingEngine.cancelAppointment", () => {
   });
 });
 
+describe("schedulingEngine.confirmAppointment", () => {
+  it("confirma um agendamento recém-criado", async () => {
+    repository.findById.mockResolvedValue(appointment());
+
+    const confirmed = await schedulingEngine.confirmAppointment("appt-1");
+
+    expect(repository.updateStatus).toHaveBeenCalledWith("appt-1", "CONFIRMED");
+    expect(confirmed.status).toBe("CONFIRMED");
+  });
+
+  it("recusa confirmar duas vezes", async () => {
+    repository.findById.mockResolvedValue(appointment({ status: "CONFIRMED" }));
+
+    await expect(schedulingEngine.confirmAppointment("appt-1")).rejects.toThrow(
+      "Agendamento já está confirmado",
+    );
+    expect(repository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("recusa confirmar agendamento cancelado", async () => {
+    repository.findById.mockResolvedValue(appointment({ status: "CANCELLED" }));
+
+    await expect(
+      schedulingEngine.confirmAppointment("appt-1"),
+    ).rejects.toMatchObject({
+      message: "Não é possível confirmar um agendamento cancelado",
+      statusCode: 409,
+    });
+    expect(repository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("recusa confirmar agendamento já concluído", async () => {
+    repository.findById.mockResolvedValue(appointment({ status: "COMPLETED" }));
+
+    await expect(
+      schedulingEngine.confirmAppointment("appt-1"),
+    ).rejects.toMatchObject({
+      message: "Não é possível confirmar um agendamento já concluído",
+      statusCode: 409,
+    });
+  });
+
+  it("retorna 404 quando o agendamento não existe no tenant", async () => {
+    repository.findById.mockResolvedValue(null);
+
+    await expect(
+      schedulingEngine.confirmAppointment("appt-1"),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe("schedulingEngine.completeAppointment", () => {
+  it("conclui um agendamento apenas marcado", async () => {
+    repository.findById.mockResolvedValue(appointment());
+
+    const completed = await schedulingEngine.completeAppointment("appt-1");
+
+    expect(repository.updateStatus).toHaveBeenCalledWith("appt-1", "COMPLETED");
+    expect(completed.status).toBe("COMPLETED");
+  });
+
+  it("conclui um agendamento já confirmado", async () => {
+    repository.findById.mockResolvedValue(appointment({ status: "CONFIRMED" }));
+
+    await schedulingEngine.completeAppointment("appt-1");
+
+    expect(repository.updateStatus).toHaveBeenCalledWith("appt-1", "COMPLETED");
+  });
+
+  it("recusa concluir duas vezes", async () => {
+    repository.findById.mockResolvedValue(appointment({ status: "COMPLETED" }));
+
+    await expect(
+      schedulingEngine.completeAppointment("appt-1"),
+    ).rejects.toMatchObject({
+      message: "Agendamento já está concluído",
+      statusCode: 409,
+    });
+    expect(repository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("recusa concluir agendamento cancelado", async () => {
+    repository.findById.mockResolvedValue(appointment({ status: "CANCELLED" }));
+
+    await expect(
+      schedulingEngine.completeAppointment("appt-1"),
+    ).rejects.toMatchObject({
+      message: "Não é possível concluir um agendamento cancelado",
+      statusCode: 409,
+    });
+    expect(repository.updateStatus).not.toHaveBeenCalled();
+  });
+
+  it("retorna 404 quando o agendamento não existe no tenant", async () => {
+    repository.findById.mockResolvedValue(null);
+
+    await expect(
+      schedulingEngine.completeAppointment("appt-1"),
+    ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
 describe("schedulingEngine.rescheduleAppointment", () => {
   it("não conflita com o próprio agendamento ao mudar de horário", async () => {
     repository.findById.mockResolvedValue(appointment());
