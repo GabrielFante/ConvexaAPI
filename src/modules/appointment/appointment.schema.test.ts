@@ -1,5 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { createAppointmentSchema } from "./appointment.schema";
+import { z } from "zod";
+import {
+  createAppointmentSchema,
+  rescheduleAppointmentSchema,
+} from "./appointment.schema";
 
 const CUSTOMER = "11111111-1111-4111-8111-111111111111";
 const SERVICE = "22222222-2222-4222-8222-222222222222";
@@ -12,9 +16,17 @@ const input = {
   startAt: "2026-12-25T13:00:00.000Z",
 };
 
-function issuePaths(data: unknown): string[] {
-  const result = createAppointmentSchema.safeParse(data);
+function pathsOf(schema: z.ZodType, data: unknown): string[] {
+  const result = schema.safeParse(data);
   return result.success ? [] : result.error.issues.map((i) => i.path.join("."));
+}
+
+function issuePaths(data: unknown): string[] {
+  return pathsOf(createAppointmentSchema, data);
+}
+
+function reschedulePaths(data: unknown): string[] {
+  return pathsOf(rescheduleAppointmentSchema, data);
 }
 
 describe("createAppointmentSchema", () => {
@@ -50,5 +62,34 @@ describe("createAppointmentSchema", () => {
 
   it("rejeita identificador que não é uuid", () => {
     expect(issuePaths({ ...input, employeeId: "abc" })).toEqual(["employeeId"]);
+  });
+});
+
+describe("rescheduleAppointmentSchema", () => {
+  it("aceita apenas o novo horário", () => {
+    const parsed = rescheduleAppointmentSchema.parse({
+      startAt: "2026-12-25T13:00:00.000Z",
+    });
+
+    expect(parsed).toEqual({ startAt: new Date("2026-12-25T13:00:00.000Z") });
+  });
+
+  it("aceita troca de funcionário junto do horário", () => {
+    const parsed = rescheduleAppointmentSchema.parse({
+      startAt: "2026-12-25T13:00:00.000Z",
+      employeeId: EMPLOYEE,
+    });
+
+    expect(parsed.employeeId).toBe(EMPLOYEE);
+  });
+
+  it("exige startAt", () => {
+    expect(reschedulePaths({ employeeId: EMPLOYEE })).toEqual(["startAt"]);
+  });
+
+  it("exige fuso explícito em startAt", () => {
+    expect(reschedulePaths({ startAt: "2026-12-25T13:00:00" })).toEqual([
+      "startAt",
+    ]);
   });
 });

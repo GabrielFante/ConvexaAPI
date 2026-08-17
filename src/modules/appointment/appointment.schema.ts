@@ -9,4 +9,12 @@ export const createAppointmentSchema = z.object({
   notes: z.string().trim().min(1).optional(),
 });
 
+export const rescheduleAppointmentSchema = z.object({
+  startAt: instant,
+  employeeId: uuid.optional(),
+});
+
 export type CreateAppointmentInput = z.infer<typeof createAppointmentSchema>;
+export type RescheduleAppointmentInput = z.infer<
+  typeof rescheduleAppointmentSchema
+>;
