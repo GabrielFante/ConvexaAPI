@@ -17,11 +17,20 @@ const db = vi.hoisted(() => {
     id: string;
     businessId: string;
     employeeId: string;
+    customerId?: string;
     status: string;
     startAt: Date;
     endAt: Date;
   };
   type ScopedWhere = { id: string; businessId: string };
+  type ListWhere = {
+    businessId: string;
+    customerId?: string;
+    employeeId?: string;
+    status?: string;
+    startAt?: { lt: Date };
+    endAt?: { gt: Date };
+  };
   type ConflictWhere = {
     businessId: string;
     employeeId: string;
@@ -48,6 +57,26 @@ const db = vi.hoisted(() => {
           ) ?? null,
         ),
       ),
+      findMany: vi.fn((args: { where: ListWhere }) => {
+        const { where } = args;
+
+        return Promise.resolve(
+          state.appointments
+            .filter(
+              (row) =>
+                row.businessId === where.businessId &&
+                (!where.customerId || row.customerId === where.customerId) &&
+                (!where.employeeId || row.employeeId === where.employeeId) &&
+                (!where.status || row.status === where.status) &&
+                (!where.startAt ||
+                  row.startAt.getTime() < where.startAt.lt.getTime()) &&
+                (!where.endAt ||
+                  row.endAt.getTime() > where.endAt.gt.getTime()),
+            )
+            .sort((a, b) => a.startAt.getTime() - b.startAt.getTime())
+            .map((row) => ({ ...row })),
+        );
+      }),
       create: vi.fn(
         (args: {
           data: Omit<Appointment, "id" | "status"> & { status?: string };
@@ -166,6 +195,87 @@ describe("schedulingRepository — escopo de tenant nas escritas", () => {
       message: "Agendamento não encontrado",
     });
     expect(db.state.appointments[0]?.startAt).toEqual(START);
+  });
+});
+
+describe("schedulingRepository.list", () => {
+  const CUSTOMER = "cli-1";
+  const HOUR_MS = 60 * 60 * 1000;
+
+  beforeEach(() => {
+    db.seed([
+      {
+        id: "apt-tarde",
+        businessId: TENANT_B,
+        employeeId: "emp-do-b",
+        customerId: CUSTOMER,
+        status: "SCHEDULED",
+        startAt: NEW_START,
+        endAt: NEW_END,
+      },
+      {
+        id: "apt-manha",
+        businessId: TENANT_B,
+        employeeId: "outro-emp",
+        customerId: "cli-2",
+        status: "CANCELLED",
+        startAt: START,
+        endAt: END,
+      },
+      {
+        id: APPOINTMENT_OF_B,
+        businessId: TENANT_A,
+        employeeId: "emp-do-a",
+        customerId: CUSTOMER,
+        status: "SCHEDULED",
+        startAt: START,
+        endAt: END,
+      },
+    ]);
+  });
+
+  async function listAs(tenant: string, filter = {}) {
+    const rows = await runWithTenant(tenant, () =>
+      schedulingRepository.list(filter),
+    );
+
+    return rows.map((row) => row.id);
+  }
+
+  it("devolve apenas os agendamentos do tenant, ordenados por início", async () => {
+    expect(await listAs(TENANT_B)).toEqual(["apt-manha", "apt-tarde"]);
+  });
+
+  it("não enxerga agendamento de outro tenant nem pelo filtro de cliente", async () => {
+    expect(await listAs(TENANT_A, { customerId: CUSTOMER })).toEqual([
+      APPOINTMENT_OF_B,
+    ]);
+    expect(await listAs(TENANT_B, { customerId: CUSTOMER })).toEqual([
+      "apt-tarde",
+    ]);
+  });
+
+  it("filtra por funcionário", async () => {
+    expect(await listAs(TENANT_B, { employeeId: "outro-emp" })).toEqual([
+      "apt-manha",
+    ]);
+  });
+
+  it("filtra por status", async () => {
+    expect(await listAs(TENANT_B, { status: "CANCELLED" })).toEqual([
+      "apt-manha",
+    ]);
+  });
+
+  it("traz quem intersecta o intervalo, não só quem começa dentro dele", async () => {
+    const meioDoPrimeiro = new Date(START.getTime() + 30 * 60 * 1000);
+
+    expect(
+      await listAs(TENANT_B, {
+        from: meioDoPrimeiro,
+        to: new Date(meioDoPrimeiro.getTime() + HOUR_MS),
+      }),
+    ).toEqual(["apt-manha"]);
   });
 });
 

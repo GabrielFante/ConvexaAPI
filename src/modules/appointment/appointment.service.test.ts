@@ -5,6 +5,8 @@ import { appointmentService } from "./appointment.service";
 
 vi.mock("../scheduling/scheduling.engine", () => ({
   schedulingEngine: {
+    listAppointments: vi.fn(),
+    getAppointment: vi.fn(),
     createAppointment: vi.fn(),
     cancelAppointment: vi.fn(),
     confirmAppointment: vi.fn(),
@@ -24,6 +26,40 @@ const input = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+});
+
+describe("appointmentService.list", () => {
+  it("repassa o filtro ao scheduling engine", async () => {
+    const filter = { customerId: input.customerId };
+    vi.mocked(schedulingEngine.listAppointments).mockResolvedValue([]);
+
+    await appointmentService.list(filter);
+
+    expect(schedulingEngine.listAppointments).toHaveBeenCalledWith(filter);
+  });
+});
+
+describe("appointmentService.get", () => {
+  it("busca o agendamento pelo scheduling engine", async () => {
+    vi.mocked(schedulingEngine.getAppointment).mockResolvedValue({
+      id: APPOINTMENT,
+    } as Awaited<ReturnType<typeof schedulingEngine.getAppointment>>);
+
+    const appointment = await appointmentService.get(APPOINTMENT);
+
+    expect(schedulingEngine.getAppointment).toHaveBeenCalledWith(APPOINTMENT);
+    expect(appointment).toEqual({ id: APPOINTMENT });
+  });
+
+  it("propaga o 404 de agendamento de outro tenant", async () => {
+    vi.mocked(schedulingEngine.getAppointment).mockRejectedValue(
+      new AppError("Agendamento não encontrado", 404),
+    );
+
+    await expect(appointmentService.get(APPOINTMENT)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+  });
 });
 
 describe("appointmentService.create", () => {

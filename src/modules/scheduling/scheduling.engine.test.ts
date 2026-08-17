@@ -13,6 +13,7 @@ vi.mock("./scheduling.repository", () => ({
     getConfig: vi.fn(),
     listEligibleEmployees: vi.fn(),
     loadScheduleData: vi.fn(),
+    list: vi.fn(),
     findById: vi.fn(),
     create: vi.fn(),
     reschedule: vi.fn(),
@@ -297,6 +298,37 @@ describe("schedulingEngine.cancelAppointment", () => {
     await expect(
       schedulingEngine.cancelAppointment("appt-1"),
     ).rejects.toMatchObject({ statusCode: 404 });
+  });
+});
+
+describe("schedulingEngine.getAppointment", () => {
+  it("devolve o agendamento do tenant", async () => {
+    repository.findById.mockResolvedValue(appointment());
+
+    expect(await schedulingEngine.getAppointment("appt-1")).toMatchObject({
+      id: "appt-1",
+    });
+  });
+
+  it("retorna 404 quando o agendamento não existe no tenant", async () => {
+    repository.findById.mockResolvedValue(null);
+
+    await expect(
+      schedulingEngine.getAppointment("appt-1"),
+    ).rejects.toMatchObject({
+      message: "Agendamento não encontrado",
+      statusCode: 404,
+    });
+  });
+});
+
+describe("schedulingEngine.listAppointments", () => {
+  it("repassa o filtro ao repository", async () => {
+    repository.list.mockResolvedValue([]);
+
+    await schedulingEngine.listAppointments({ customerId: customer.id });
+
+    expect(repository.list).toHaveBeenCalledWith({ customerId: customer.id });
   });
 });
 

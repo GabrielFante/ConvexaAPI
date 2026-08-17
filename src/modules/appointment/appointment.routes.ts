@@ -3,6 +3,8 @@ import { appointmentController } from "./appointment.controller";
 
 export const appointmentRoutes = Router();
 
+appointmentRoutes.get("/appointments", appointmentController.list);
+appointmentRoutes.get("/appointments/:id", appointmentController.get);
 appointmentRoutes.post("/appointments", appointmentController.create);
 appointmentRoutes.post(
   "/appointments/:id/cancel",

@@ -41,6 +41,20 @@ export type AppointmentWrite = {
   notes?: string;
 };
 
+export type AppointmentStatus =
+  | "SCHEDULED"
+  | "CONFIRMED"
+  | "COMPLETED"
+  | "CANCELLED";
+
+export type AppointmentFilter = {
+  customerId?: string;
+  employeeId?: string;
+  status?: AppointmentStatus;
+  from?: Date;
+  to?: Date;
+};
+
 export type AppointmentReschedule = {
   employeeId: string;
   startAt: Date;
@@ -164,6 +178,21 @@ export const schedulingRepository = {
       appointments,
       employees: [],
     };
+  },
+
+  list(filter: AppointmentFilter) {
+    return prisma.appointment.findMany({
+      where: {
+        businessId: getBusinessId(),
+        ...(filter.customerId ? { customerId: filter.customerId } : {}),
+        ...(filter.employeeId ? { employeeId: filter.employeeId } : {}),
+        ...(filter.status ? { status: filter.status } : {}),
+        ...(filter.from ? { endAt: { gt: filter.from } } : {}),
+        ...(filter.to ? { startAt: { lt: filter.to } } : {}),
+      },
+      include: appointmentInclude,
+      orderBy: { startAt: "asc" },
+    });
   },
 
   async findById(id: string) {

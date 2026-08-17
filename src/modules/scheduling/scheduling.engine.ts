@@ -9,7 +9,10 @@ import { customerService } from "../customer/customer.service";
 import { employeeService } from "../employee/employee.service";
 import { serviceService } from "../service/service.service";
 import { checkSlot, computeAvailability } from "./availability";
-import { schedulingRepository } from "./scheduling.repository";
+import {
+  schedulingRepository,
+  type AppointmentFilter,
+} from "./scheduling.repository";
 import type {
   AvailabilitySlot,
   EmployeeSchedule,
@@ -228,6 +231,14 @@ export const schedulingEngine = {
     result.slots = computeAvailability(context);
 
     return result;
+  },
+
+  getAppointment(id: string) {
+    return loadOrFail(id);
+  },
+
+  listAppointments(filter: AppointmentFilter) {
+    return schedulingRepository.list(filter);
   },
 
   async createAppointment(input: CreateAppointmentInput) {

@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { z } from "zod";
 import {
   createAppointmentSchema,
+  listAppointmentsSchema,
   rescheduleAppointmentSchema,
 } from "./appointment.schema";
 
@@ -27,6 +28,10 @@ function issuePaths(data: unknown): string[] {
 
 function reschedulePaths(data: unknown): string[] {
   return pathsOf(rescheduleAppointmentSchema, data);
+}
+
+function listPaths(data: unknown): string[] {
+  return pathsOf(listAppointmentsSchema, data);
 }
 
 describe("createAppointmentSchema", () => {
@@ -62,6 +67,38 @@ describe("createAppointmentSchema", () => {
 
   it("rejeita identificador que não é uuid", () => {
     expect(issuePaths({ ...input, employeeId: "abc" })).toEqual(["employeeId"]);
+  });
+});
+
+describe("listAppointmentsSchema", () => {
+  it("aceita consulta sem filtro nenhum", () => {
+    expect(listAppointmentsSchema.parse({})).toEqual({});
+  });
+
+  it("converte o intervalo para Date", () => {
+    const parsed = listAppointmentsSchema.parse({
+      from: "2026-12-25T00:00:00.000Z",
+      to: "2026-12-26T00:00:00.000Z",
+    });
+
+    expect(parsed.from).toEqual(new Date("2026-12-25T00:00:00.000Z"));
+  });
+
+  it("rejeita intervalo invertido", () => {
+    expect(
+      listPaths({
+        from: "2026-12-26T00:00:00.000Z",
+        to: "2026-12-25T00:00:00.000Z",
+      }),
+    ).toEqual(["to"]);
+  });
+
+  it("rejeita status fora do enum", () => {
+    expect(listPaths({ status: "PENDENTE" })).toEqual(["status"]);
+  });
+
+  it("rejeita customerId que não é uuid", () => {
+    expect(listPaths({ customerId: "abc" })).toEqual(["customerId"]);
   });
 });
 
