@@ -12,6 +12,7 @@ import { employeeRoutes } from "./modules/employee/employee.routes";
 import { customerRoutes } from "./modules/customer/customer.routes";
 import { timeBlockRoutes } from "./modules/timeblock/timeblock.routes";
 import { appointmentRoutes } from "./modules/appointment/appointment.routes";
+import { schedulingRoutes } from "./modules/scheduling/scheduling.routes";
 import {
   errorHandler,
   notFoundHandler,
@@ -36,6 +37,7 @@ apiRoutes.use(employeeRoutes);
 apiRoutes.use(customerRoutes);
 apiRoutes.use(timeBlockRoutes);
 apiRoutes.use(appointmentRoutes);
+apiRoutes.use(schedulingRoutes);
 
 app.use("/api", apiRoutes);
 
