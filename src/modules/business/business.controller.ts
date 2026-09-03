@@ -2,7 +2,6 @@ import type { Request, Response } from "express";
 import { idParam } from "../../shared/validation/common";
 import { businessService } from "./business.service";
 import {
-  createBusinessSchema,
   createClosedDaySchema,
   createVacationSchema,
   phoneNumberIdParam,
@@ -11,12 +10,6 @@ import {
 } from "./business.schema";
 
 export const businessController = {
-  async create(req: Request, res: Response) {
-    const data = createBusinessSchema.parse(req.body);
-    const business = await businessService.create(data);
-    res.status(201).json(business);
-  },
-
   async get(_req: Request, res: Response) {
     const business = await businessService.get();
     res.json(business);

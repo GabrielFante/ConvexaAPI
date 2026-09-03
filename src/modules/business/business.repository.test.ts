@@ -69,16 +69,6 @@ describe("businessRepository — credenciais da Meta", () => {
     expect(business).not.toHaveProperty("metaAccessToken");
   });
 
-  it("não devolve metaAccessToken ao criar a empresa", async () => {
-    const business = await businessRepository.create({
-      name: "Barbearia do Gabriel",
-      slug: "barbearia-do-gabriel",
-      metaAccessToken: SECRET,
-    });
-
-    expect(business).not.toHaveProperty("metaAccessToken");
-  });
-
   it("mantém metaAccessToken gravável via update", async () => {
     await runWithTenant(BUSINESS_ID, () =>
       businessRepository.update({ metaAccessToken: SECRET }),
@@ -107,15 +97,8 @@ describe("businessRepository — credenciais da Meta", () => {
     const updated = await runWithTenant(BUSINESS_ID, () =>
       businessRepository.update({ name: "Novo nome" }),
     );
-    const created = await businessRepository.create({
-      name: "Barbearia do Gabriel",
-      slug: "barbearia-do-gabriel",
-      metaAppSecret: APP_SECRET,
-    });
-
     expect(read).not.toHaveProperty("metaAppSecret");
     expect(updated).not.toHaveProperty("metaAppSecret");
-    expect(created).not.toHaveProperty("metaAppSecret");
   });
 
   it("resolve pelo número da Meta sem sequer selecionar credenciais", async () => {

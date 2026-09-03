@@ -7,7 +7,6 @@ import { employeeService } from "../employee/employee.service";
 import { businessRepository } from "./business.repository";
 import type {
   BusinessHourInput,
-  CreateBusinessInput,
   CreateClosedDayInput,
   CreateVacationInput,
   UpdateBusinessInput,
@@ -28,10 +27,6 @@ async function getCurrentOrFail() {
 }
 
 export const businessService = {
-  create(data: CreateBusinessInput) {
-    return businessRepository.create(data);
-  },
-
   get() {
     return getCurrentOrFail();
   },

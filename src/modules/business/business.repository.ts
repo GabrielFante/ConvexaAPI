@@ -2,7 +2,6 @@ import { prisma } from "../../shared/database/prisma";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
 import type {
   BusinessHourInput,
-  CreateBusinessInput,
   CreateClosedDayInput,
   CreateVacationInput,
   UpdateBusinessInput,
@@ -26,10 +25,6 @@ const secretFields = {
 } as const;
 
 export const businessRepository = {
-  create(data: CreateBusinessInput) {
-    return prisma.business.create({ data, omit: secretFields });
-  },
-
   findCurrent() {
     return prisma.business.findUnique({
       where: { id: getBusinessId() },

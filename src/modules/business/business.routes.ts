@@ -1,9 +1,6 @@
 import { Router } from "express";
+import { requireRole } from "../../shared/middleware/auth";
 import { businessController } from "./business.controller";
-
-export const businessPublicRoutes = Router();
-
-businessPublicRoutes.post("/businesses", businessController.create);
 
 export const businessInternalRoutes = Router();
 
@@ -15,8 +12,16 @@ businessInternalRoutes.get(
 export const businessRoutes = Router();
 
 businessRoutes.get("/business", businessController.get);
-businessRoutes.patch("/business", businessController.update);
-businessRoutes.delete("/business", businessController.delete);
+businessRoutes.patch(
+  "/business",
+  requireRole("OWNER"),
+  businessController.update,
+);
+businessRoutes.delete(
+  "/business",
+  requireRole("OWNER"),
+  businessController.delete,
+);
 
 businessRoutes.put("/business/hours", businessController.setHours);
 
