@@ -8,9 +8,42 @@ const SLOT_TAKEN_MESSAGE =
 
 const EXCLUSION_CONSTRAINT_SQLSTATE = "23P01";
 
+const prismaErrors: Record<
+  string,
+  { status: number; code: string; message: string }
+> = {
+  P2002: {
+    status: 409,
+    code: "UNIQUE_VIOLATION",
+    message: "Registro já existe com um valor único informado",
+  },
+  P2025: {
+    status: 404,
+    code: "NOT_FOUND",
+    message: "Registro não encontrado",
+  },
+  P2003: {
+    status: 409,
+    code: "FOREIGN_KEY_VIOLATION",
+    message:
+      "Existem registros vinculados a este item. Remova-os antes de continuar",
+  },
+  P2023: {
+    status: 400,
+    code: "INVALID_ID",
+    message: "Identificador inválido",
+  },
+  P2034: {
+    status: 409,
+    code: "SLOT_CONFLICT",
+    message: SLOT_TAKEN_MESSAGE,
+  },
+};
+
 export const notFoundHandler: RequestHandler = (req, res) => {
   res.status(404).json({
     status: "error",
+    code: "ROUTE_NOT_FOUND",
     message: `Rota não encontrada: ${req.method} ${req.originalUrl}`,
   });
 };
@@ -19,6 +52,7 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
       status: "error",
+      ...(err.code ? { code: err.code } : {}),
       message: err.message,
     });
     return;
@@ -27,6 +61,7 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof ZodError) {
     res.status(400).json({
       status: "error",
+      code: "VALIDATION_ERROR",
       message: "Dados de entrada inválidos",
       issues: err.issues.map((issue) => ({
         field: issue.path.join("."),
@@ -37,35 +72,13 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   }
 
   if (err instanceof Prisma.PrismaClientKnownRequestError) {
-    if (err.code === "P2002") {
-      res.status(409).json({
-        status: "error",
-        message: "Registro já existe com um valor único informado",
-      });
-      return;
-    }
+    const mapped = prismaErrors[err.code];
 
-    if (err.code === "P2025") {
-      res.status(404).json({
+    if (mapped) {
+      res.status(mapped.status).json({
         status: "error",
-        message: "Registro não encontrado",
-      });
-      return;
-    }
-
-    if (err.code === "P2003") {
-      res.status(409).json({
-        status: "error",
-        message:
-          "Existem registros vinculados a este item. Remova-os antes de continuar",
-      });
-      return;
-    }
-
-    if (err.code === "P2034") {
-      res.status(409).json({
-        status: "error",
-        message: SLOT_TAKEN_MESSAGE,
+        code: mapped.code,
+        message: mapped.message,
       });
       return;
     }
@@ -77,7 +90,19 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   ) {
     res.status(409).json({
       status: "error",
+      code: "SLOT_CONFLICT",
       message: SLOT_TAKEN_MESSAGE,
+    });
+    return;
+  }
+
+  if (err instanceof Prisma.PrismaClientValidationError) {
+    console.error("PrismaClientValidationError");
+
+    res.status(400).json({
+      status: "error",
+      code: "INVALID_REQUEST",
+      message: "Dados de entrada inválidos",
     });
     return;
   }
@@ -86,6 +111,7 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 
   res.status(500).json({
     status: "error",
+    code: "INTERNAL_ERROR",
     message: "Erro interno do servidor",
   });
 };

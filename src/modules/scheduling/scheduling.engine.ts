@@ -97,7 +97,11 @@ async function loadOrFail(id: string) {
   const appointment = await schedulingRepository.findById(id);
 
   if (!appointment) {
-    throw new AppError("Agendamento não encontrado", 404);
+    throw new AppError(
+      "Agendamento não encontrado",
+      404,
+      "APPOINTMENT_NOT_FOUND",
+    );
   }
 
   return appointment;
@@ -107,7 +111,11 @@ async function loadConfig(): Promise<ScheduleConfig> {
   const config = await schedulingRepository.getConfig();
 
   if (!config) {
-    throw new AppError("Empresa (tenant) não encontrada", 404);
+    throw new AppError(
+      "Empresa (tenant) não encontrada",
+      404,
+      "BUSINESS_NOT_FOUND",
+    );
   }
 
   return config;
@@ -117,7 +125,7 @@ async function loadActiveService(serviceId: string) {
   const service = await serviceService.get(serviceId);
 
   if (!service.active) {
-    throw new AppError("Serviço inativo", 400);
+    throw new AppError("Serviço inativo", 400, "SERVICE_INACTIVE");
   }
 
   return service;
@@ -131,7 +139,7 @@ async function loadEligibleEmployees(
     const employee = await employeeService.get(employeeId);
 
     if (!employee.active) {
-      throw new AppError("Funcionário inativo", 400);
+      throw new AppError("Funcionário inativo", 400, "EMPLOYEE_INACTIVE");
     }
   }
 
@@ -141,7 +149,11 @@ async function loadEligibleEmployees(
   );
 
   if (employeeId && !employees.length) {
-    throw new AppError("Funcionário não realiza este serviço", 400);
+    throw new AppError(
+      "Funcionário não realiza este serviço",
+      400,
+      "EMPLOYEE_SERVICE_MISMATCH",
+    );
   }
 
   return employees;
@@ -195,7 +207,7 @@ function assertBookable(
 
   if (violation) {
     const error = violationErrors[violation];
-    throw new AppError(error.message, error.status);
+    throw new AppError(error.message, error.status, violation);
   }
 }
 
@@ -281,7 +293,11 @@ export const schedulingEngine = {
 
     if (!appointment) {
       const conflict = violationErrors.APPOINTMENT_CONFLICT;
-      throw new AppError(conflict.message, conflict.status);
+      throw new AppError(
+        conflict.message,
+        conflict.status,
+        "APPOINTMENT_CONFLICT",
+      );
     }
 
     return appointment;
@@ -291,13 +307,18 @@ export const schedulingEngine = {
     const appointment = await loadOrFail(id);
 
     if (appointment.status === "CANCELLED") {
-      throw new AppError("Agendamento já está cancelado", 409);
+      throw new AppError(
+        "Agendamento já está cancelado",
+        409,
+        "ALREADY_CANCELLED",
+      );
     }
 
     if (appointment.status === "COMPLETED") {
       throw new AppError(
         "Não é possível cancelar um agendamento já concluído",
         409,
+        "INVALID_STATUS_TRANSITION",
       );
     }
 
@@ -308,7 +329,11 @@ export const schedulingEngine = {
     const appointment = await loadOrFail(id);
 
     if (appointment.status === "CONFIRMED") {
-      throw new AppError("Agendamento já está confirmado", 409);
+      throw new AppError(
+        "Agendamento já está confirmado",
+        409,
+        "ALREADY_CONFIRMED",
+      );
     }
 
     if (appointment.status !== "SCHEDULED") {
@@ -317,6 +342,7 @@ export const schedulingEngine = {
           ? "Não é possível confirmar um agendamento cancelado"
           : "Não é possível confirmar um agendamento já concluído",
         409,
+        "INVALID_STATUS_TRANSITION",
       );
     }
 
@@ -327,13 +353,18 @@ export const schedulingEngine = {
     const appointment = await loadOrFail(id);
 
     if (appointment.status === "COMPLETED") {
-      throw new AppError("Agendamento já está concluído", 409);
+      throw new AppError(
+        "Agendamento já está concluído",
+        409,
+        "ALREADY_COMPLETED",
+      );
     }
 
     if (appointment.status === "CANCELLED") {
       throw new AppError(
         "Não é possível concluir um agendamento cancelado",
         409,
+        "INVALID_STATUS_TRANSITION",
       );
     }
 
@@ -347,7 +378,11 @@ export const schedulingEngine = {
       appointment.status !== "SCHEDULED" &&
       appointment.status !== "CONFIRMED"
     ) {
-      throw new AppError("Só é possível reagendar um agendamento ativo", 409);
+      throw new AppError(
+        "Só é possível reagendar um agendamento ativo",
+        409,
+        "INVALID_STATUS_TRANSITION",
+      );
     }
 
     const employeeId = input.employeeId ?? appointment.employeeId;
@@ -388,7 +423,11 @@ export const schedulingEngine = {
 
     if (!rescheduled) {
       const conflict = violationErrors.APPOINTMENT_CONFLICT;
-      throw new AppError(conflict.message, conflict.status);
+      throw new AppError(
+        conflict.message,
+        conflict.status,
+        "APPOINTMENT_CONFLICT",
+      );
     }
 
     return rescheduled;
