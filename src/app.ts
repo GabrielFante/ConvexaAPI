@@ -27,6 +27,8 @@ import {
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 app.use(cors(env.CORS_ORIGINS.length > 0 ? { origin: env.CORS_ORIGINS } : {}));
 app.use(express.json());
 
