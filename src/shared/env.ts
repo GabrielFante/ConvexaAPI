@@ -14,6 +14,9 @@ const originList = z
 export const envSchema = z
   .object({
     DATABASE_URL: z.url("DATABASE_URL deve ser uma URL de conexão válida"),
+    DIRECT_URL: z
+      .url("DIRECT_URL deve ser uma URL de conexão válida")
+      .optional(),
     PORT: z.coerce.number().int().positive().default(3000),
     NODE_ENV: z
       .enum(["development", "production", "test"])
