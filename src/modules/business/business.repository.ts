@@ -19,21 +19,54 @@ export type VacationRecord = Omit<
   endDate: Date;
 };
 
-const secretFields = {
-  metaAccessToken: true,
-  metaAppSecret: true,
+const hourFields = {
+  id: true,
+  dayOfWeek: true,
+  opensAt: true,
+  closesAt: true,
+} as const;
+
+const closedDayFields = {
+  id: true,
+  date: true,
+  reason: true,
+} as const;
+
+const vacationFields = {
+  id: true,
+  employeeId: true,
+  startDate: true,
+  endDate: true,
+  reason: true,
+} as const;
+
+const publicBusinessFields = {
+  id: true,
+  name: true,
+  slug: true,
+  timezone: true,
+  phone: true,
+  metaPhoneNumberId: true,
+  metaWabaId: true,
+  aiSystemPrompt: true,
+  slotIntervalMinutes: true,
+  bufferMinutes: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
+const businessWithSchedule = {
+  ...publicBusinessFields,
+  hours: { select: hourFields, orderBy: { dayOfWeek: "asc" } },
+  closedDays: { select: closedDayFields, orderBy: { date: "asc" } },
+  vacations: { select: vacationFields, orderBy: { startDate: "asc" } },
 } as const;
 
 export const businessRepository = {
   findCurrent() {
-    return prisma.business.findUnique({
+    return prisma.business.findFirst({
       where: { id: getBusinessId() },
-      omit: secretFields,
-      include: {
-        hours: { orderBy: { dayOfWeek: "asc" } },
-        closedDays: { orderBy: { date: "asc" } },
-        vacations: { orderBy: { startDate: "asc" } },
-      },
+      select: businessWithSchedule,
     });
   },
 
@@ -48,12 +81,15 @@ export const businessRepository = {
     return prisma.business.update({
       where: { id: getBusinessId() },
       data,
-      omit: secretFields,
+      select: businessWithSchedule,
     });
   },
 
   delete() {
-    return prisma.business.delete({ where: { id: getBusinessId() } });
+    return prisma.business.delete({
+      where: { id: getBusinessId() },
+      select: { id: true },
+    });
   },
 
   async setHours(hours: BusinessHourInput[]) {
@@ -68,6 +104,7 @@ export const businessRepository = {
     });
     return prisma.businessHours.findMany({
       where: { businessId },
+      select: hourFields,
       orderBy: { dayOfWeek: "asc" },
     });
   },
@@ -75,6 +112,7 @@ export const businessRepository = {
   listClosedDays() {
     return prisma.closedDay.findMany({
       where: { businessId: getBusinessId() },
+      select: closedDayFields,
       orderBy: { date: "asc" },
     });
   },
@@ -82,6 +120,7 @@ export const businessRepository = {
   addClosedDay(data: ClosedDayRecord) {
     return prisma.closedDay.create({
       data: { ...data, businessId: getBusinessId() },
+      select: closedDayFields,
     });
   },
 
@@ -94,6 +133,7 @@ export const businessRepository = {
   listVacations() {
     return prisma.vacation.findMany({
       where: { businessId: getBusinessId() },
+      select: vacationFields,
       orderBy: { startDate: "asc" },
     });
   },
@@ -101,6 +141,7 @@ export const businessRepository = {
   addVacation(data: VacationRecord) {
     return prisma.vacation.create({
       data: { ...data, businessId: getBusinessId() },
+      select: vacationFields,
     });
   },
 

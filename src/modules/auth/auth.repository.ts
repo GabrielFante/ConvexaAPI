@@ -83,7 +83,10 @@ export const authRepository = {
   },
 
   saveRefreshToken(data: RefreshTokenRecord) {
-    return prisma.refreshToken.create({ data });
+    return prisma.refreshToken.create({
+      data,
+      select: { id: true, userId: true, businessId: true, expiresAt: true },
+    });
   },
 
   findRefreshTokenByHash(tokenHash: string) {
@@ -114,7 +117,10 @@ export const authRepository = {
   },
 
   createPasswordResetToken(data: PasswordResetTokenRecord) {
-    return prisma.passwordResetToken.create({ data });
+    return prisma.passwordResetToken.create({
+      data,
+      select: { id: true, userId: true, expiresAt: true },
+    });
   },
 
   findPasswordResetTokenByHash(tokenHash: string) {

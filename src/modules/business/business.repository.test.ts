@@ -24,13 +24,16 @@ const prismaMock = vi.hoisted(() => {
     updatedAt: new Date(),
   };
 
-  const applyOmit = (args: { omit?: Record<string, boolean> }) => {
-    const result: Record<string, unknown> = { ...row };
+  const applySelect = (args: { select?: Record<string, unknown> }) => {
+    const result: Record<string, unknown> = {};
 
-    for (const [field, omitted] of Object.entries(args.omit ?? {})) {
-      if (omitted) {
-        delete result[field];
+    for (const [field, selected] of Object.entries(args.select ?? {})) {
+      if (!selected) {
+        continue;
       }
+
+      result[field] =
+        typeof selected === "object" ? [] : row[field as keyof typeof row];
     }
 
     return result;
@@ -38,9 +41,10 @@ const prismaMock = vi.hoisted(() => {
 
   return {
     business: {
-      create: vi.fn(applyOmit),
-      findUnique: vi.fn(applyOmit),
-      update: vi.fn(applyOmit),
+      create: vi.fn(applySelect),
+      findFirst: vi.fn(applySelect),
+      findUnique: vi.fn(applySelect),
+      update: vi.fn(applySelect),
     },
   };
 });
