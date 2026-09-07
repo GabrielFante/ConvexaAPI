@@ -1,0 +1,52 @@
+services:
+  db:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: convexa
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Configure POSTGRES_PASSWORD}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Configure APP_DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/10-app.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d convexa"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks: [database]
+    mem_limit: 768m
+    cpus: 1.0
+  api:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://convexa:${APP_DB_PASSWORD:?Configure APP_DB_PASSWORD}@db:5432/convexa?schema=public
+      JWT_SECRET: ${JWT_SECRET:?Configure JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Configure INTERNAL_API_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Configure CORS_ORIGINS}
+      APP_URL: ${APP_URL:?Configure APP_URL}
+      PASSWORD_RESET_ENABLED: "false"
+    expose: ["3000"]
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    networks: [default, database]
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    mem_limit: 512m
+    cpus: 1.0
+volumes:
+  postgres_data:
+networks:
+  default:
+  database:
+    internal: true

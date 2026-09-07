@@ -11,6 +11,20 @@ const baseEnv = {
 };
 
 describe("envSchema", () => {
+  it("permite produção sem Resend somente com recuperação explicitamente desativada", () => {
+    expect(
+      envSchema.safeParse({
+        ...baseEnv,
+        NODE_ENV: "production",
+        CORS_ORIGINS: "https://api-convexa.altvia.cloud",
+        PASSWORD_RESET_ENABLED: "false",
+      }).success,
+    ).toBe(true);
+    expect(
+      envSchema.safeParse({ ...baseEnv, PASSWORD_RESET_ENABLED: "invalid" })
+        .success,
+    ).toBe(false);
+  });
   it("aceita uma env válida", () => {
     const result = envSchema.safeParse({
       ...baseEnv,

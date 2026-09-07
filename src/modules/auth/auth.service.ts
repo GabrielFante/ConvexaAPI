@@ -155,6 +155,9 @@ export const authService = {
   },
 
   async forgotPassword({ email }: ForgotPasswordInput) {
+    if (!env.PASSWORD_RESET_ENABLED) {
+      throw new AppError("Recuperação de senha indisponível neste piloto", 503);
+    }
     const found = await authRepository.findUserByEmail(email);
 
     if (!found || !found.active) {
@@ -188,6 +191,9 @@ export const authService = {
   },
 
   async resetPassword({ token, password }: ResetPasswordInput) {
+    if (!env.PASSWORD_RESET_ENABLED) {
+      throw new AppError("Recuperação de senha indisponível neste piloto", 503);
+    }
     const stored = await authRepository.findPasswordResetTokenByHash(
       hashPasswordResetToken(token),
     );

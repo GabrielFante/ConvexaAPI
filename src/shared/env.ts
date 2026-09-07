@@ -34,6 +34,10 @@ export const envSchema = z
       .url("APP_URL deve ser a URL do painel web")
       .default("http://localhost:5173"),
     PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(30),
+    PASSWORD_RESET_ENABLED: z
+      .enum(["true", "false"])
+      .default("true")
+      .transform((value) => value === "true"),
     RESEND_API_KEY: z.string().trim().min(1).optional(),
     MAIL_FROM: z
       .string()
@@ -54,7 +58,7 @@ export const envSchema = z
       });
     }
 
-    if (!data.RESEND_API_KEY) {
+    if (data.PASSWORD_RESET_ENABLED && !data.RESEND_API_KEY) {
       ctx.addIssue({
         code: "custom",
         path: ["RESEND_API_KEY"],

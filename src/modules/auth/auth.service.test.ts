@@ -38,6 +38,33 @@ const OTHER_USER_ID = "44444444-4444-4444-8444-444444444444";
 const BUSINESS_ID = "22222222-2222-4222-8222-222222222222";
 const OTHER_BUSINESS_ID = "33333333-3333-4333-8333-333333333333";
 
+describe("password reset disabled pilot", () => {
+  it("rejects both operations before reading users, generating tokens or sending mail", async () => {
+    vi.clearAllMocks();
+    const previous = env.PASSWORD_RESET_ENABLED;
+    env.PASSWORD_RESET_ENABLED = false;
+    try {
+      await expect(
+        authService.forgotPassword({ email: "pilot@example.invalid" }),
+      ).rejects.toMatchObject({ statusCode: 503 });
+      await expect(
+        authService.resetPassword({
+          token: "unused",
+          password: "unused-password",
+        }),
+      ).rejects.toMatchObject({ statusCode: 503 });
+      expect(repositoryMock.findUserByEmail).not.toHaveBeenCalled();
+      expect(
+        repositoryMock.findPasswordResetTokenByHash,
+      ).not.toHaveBeenCalled();
+      expect(repositoryMock.createPasswordResetToken).not.toHaveBeenCalled();
+      expect(mailerMock.send).not.toHaveBeenCalled();
+    } finally {
+      env.PASSWORD_RESET_ENABLED = previous;
+    }
+  });
+});
+
 const business = {
   id: BUSINESS_ID,
   name: "Barbearia do Gabriel",
