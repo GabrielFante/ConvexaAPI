@@ -7,6 +7,15 @@ import type {
   UpdateCustomerInput,
 } from "./customer.schema";
 
+const customerFields = {
+  id: true,
+  name: true,
+  phone: true,
+  notes: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
+
 function notFound() {
   return new AppError("Cliente não encontrado", 404);
 }
@@ -23,18 +32,21 @@ export const customerRepository = {
     return prisma.customer.findMany({
       where: { businessId: getBusinessId() },
       orderBy: { createdAt: "desc" },
+      select: customerFields,
     });
   },
 
   findById(id: string) {
     return prisma.customer.findFirst({
       where: { id, businessId: getBusinessId() },
+      select: customerFields,
     });
   },
 
   create(data: CreateCustomerInput) {
     return prisma.customer.create({
       data: { ...data, businessId: getBusinessId() },
+      select: customerFields,
     });
   },
 
@@ -46,6 +58,7 @@ export const customerRepository = {
         where: { businessId_phone: { businessId, phone } },
         create: { businessId, phone, name },
         update: {},
+        select: customerFields,
       });
     } catch (error) {
       if (!isUniqueViolation(error)) {
@@ -54,6 +67,7 @@ export const customerRepository = {
 
       const concurrent = await prisma.customer.findFirst({
         where: { businessId, phone },
+        select: customerFields,
       });
 
       if (!concurrent) {
@@ -68,6 +82,7 @@ export const customerRepository = {
     const [customer] = await prisma.customer.updateManyAndReturn({
       where: { id, businessId: getBusinessId() },
       data,
+      select: customerFields,
     });
 
     if (!customer) {

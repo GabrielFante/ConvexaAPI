@@ -6,6 +6,14 @@ import type {
   ListTimeBlocksFilter,
 } from "./timeblock.schema";
 
+const timeBlockFields = {
+  id: true,
+  employeeId: true,
+  startAt: true,
+  endAt: true,
+  reason: true,
+} as const;
+
 export const timeBlockRepository = {
   list(filter: ListTimeBlocksFilter) {
     return prisma.timeBlock.findMany({
@@ -16,12 +24,14 @@ export const timeBlockRepository = {
         ...(filter.to ? { startAt: { lt: filter.to } } : {}),
       },
       orderBy: { startAt: "asc" },
+      select: timeBlockFields,
     });
   },
 
   create(data: CreateTimeBlockInput) {
     return prisma.timeBlock.create({
       data: { ...data, businessId: getBusinessId() },
+      select: timeBlockFields,
     });
   },
 

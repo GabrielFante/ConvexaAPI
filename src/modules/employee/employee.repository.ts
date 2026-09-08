@@ -8,9 +8,16 @@ import type {
   UpdateEmployeeInput,
 } from "./employee.schema";
 
-const employeeInclude = {
+const employeeFields = {
+  id: true,
+  name: true,
+  active: true,
+  createdAt: true,
+  updatedAt: true,
   services: { select: { serviceId: true } },
-  hours: true,
+  hours: {
+    select: { id: true, dayOfWeek: true, startsAt: true, endsAt: true },
+  },
 } as const;
 
 function notFound() {
@@ -20,7 +27,7 @@ function notFound() {
 function findScoped(id: string) {
   return prisma.employee.findFirst({
     where: { id, businessId: getBusinessId() },
-    include: employeeInclude,
+    select: employeeFields,
   });
 }
 
@@ -54,7 +61,7 @@ export const employeeRepository = {
     return prisma.employee.findMany({
       where: { businessId: getBusinessId() },
       orderBy: { createdAt: "desc" },
-      include: employeeInclude,
+      select: employeeFields,
     });
   },
 
@@ -73,7 +80,7 @@ export const employeeRepository = {
           : undefined,
         hours: data.hours?.length ? { create: data.hours } : undefined,
       },
-      include: employeeInclude,
+      select: employeeFields,
     });
   },
 

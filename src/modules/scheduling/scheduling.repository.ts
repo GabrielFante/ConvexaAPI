@@ -11,7 +11,16 @@ import type { ScheduleConfig, ScheduleData } from "./scheduling.types";
 
 const MINUTE_MS = 60_000;
 
-const appointmentInclude = {
+const appointmentFields = {
+  id: true,
+  startAt: true,
+  endAt: true,
+  status: true,
+  priceCents: true,
+  durationMinutes: true,
+  notes: true,
+  createdAt: true,
+  updatedAt: true,
   customer: { select: { id: true, name: true, phone: true } },
   employee: { select: { id: true, name: true } },
   service: { select: { id: true, name: true, durationMinutes: true } },
@@ -190,7 +199,7 @@ export const schedulingRepository = {
         ...(filter.from ? { endAt: { gt: filter.from } } : {}),
         ...(filter.to ? { startAt: { lt: filter.to } } : {}),
       },
-      include: appointmentInclude,
+      select: appointmentFields,
       orderBy: { startAt: "asc" },
     });
   },
@@ -198,7 +207,7 @@ export const schedulingRepository = {
   async findById(id: string) {
     return prisma.appointment.findFirst({
       where: { id, businessId: getBusinessId() },
-      include: appointmentInclude,
+      select: appointmentFields,
     });
   },
 
@@ -225,7 +234,7 @@ export const schedulingRepository = {
 
           return tx.appointment.create({
             data: { ...data, businessId },
-            include: appointmentInclude,
+            select: appointmentFields,
           });
         },
         { isolationLevel: "Serializable" },
@@ -260,7 +269,7 @@ export const schedulingRepository = {
           const [rescheduled] = await tx.appointment.updateManyAndReturn({
             where: { id, businessId },
             data,
-            include: appointmentInclude,
+            select: appointmentFields,
           });
 
           if (!rescheduled) {
@@ -281,7 +290,7 @@ export const schedulingRepository = {
     const [appointment] = await prisma.appointment.updateManyAndReturn({
       where: { id, businessId: getBusinessId() },
       data: { status },
-      include: appointmentInclude,
+      select: appointmentFields,
     });
 
     if (!appointment) {
