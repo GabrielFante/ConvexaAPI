@@ -40,6 +40,15 @@ const prismaErrors: Record<
   },
 };
 
+function isPayloadTooLarge(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "type" in err &&
+    (err as { type?: unknown }).type === "entity.too.large"
+  );
+}
+
 export const notFoundHandler: RequestHandler = (req, res) => {
   res.status(404).json({
     status: "error",
@@ -54,6 +63,15 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
       status: "error",
       ...(err.code ? { code: err.code } : {}),
       message: err.message,
+    });
+    return;
+  }
+
+  if (isPayloadTooLarge(err)) {
+    res.status(413).json({
+      status: "error",
+      code: "PAYLOAD_TOO_LARGE",
+      message: "Corpo da requisição excede o tamanho máximo permitido",
     });
     return;
   }

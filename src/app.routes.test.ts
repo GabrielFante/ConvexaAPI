@@ -345,3 +345,34 @@ describe("codigos de erro legiveis por maquina", () => {
     expect(response.body.status).toBe("CANCELLED");
   });
 });
+
+describe("cabecalhos de seguranca e limite de payload", () => {
+  it("aplica os cabecalhos do helmet nas respostas", async () => {
+    const response = await request(app)
+      .get("/api/customers")
+      .set("authorization", bearer());
+
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+    expect(response.headers["x-frame-options"]).toBe("SAMEORIGIN");
+    expect(response.headers["x-powered-by"]).toBeUndefined();
+  });
+
+  it("aplica os cabecalhos do helmet tambem no health check", async () => {
+    const response = await request(app).get("/health");
+
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+  });
+
+  it("recusa corpo acima do limite com 413, nao 500", async () => {
+    const response = await request(app)
+      .post("/api/customers")
+      .set("authorization", bearer())
+      .set("content-type", "application/json")
+      .send(
+        JSON.stringify({ name: "a".repeat(200_000), phone: "5511900000003" }),
+      );
+
+    expect(response.status).toBe(413);
+    expect(response.body.code).toBe("PAYLOAD_TOO_LARGE");
+  });
+});
