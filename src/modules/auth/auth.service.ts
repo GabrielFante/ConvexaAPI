@@ -1,4 +1,5 @@
 import type { AuthUser } from "../../shared/auth/jwt";
+import { logger } from "../../shared/logger/logger";
 import { signAccessToken } from "../../shared/auth/jwt";
 import { hashPassword, verifyPassword } from "../../shared/auth/password";
 import {
@@ -183,7 +184,7 @@ export const authService = {
         }),
       });
     } catch (error) {
-      console.error("Falha ao enviar e-mail de redefinição de senha", error);
+      logger.error("Falha ao enviar e-mail de redefinição de senha", error);
     }
   },
 

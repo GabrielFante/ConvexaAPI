@@ -92,3 +92,50 @@ describe("errorHandler — erros do Prisma", () => {
     expect(response.body?.message).toBe("Erro interno do servidor");
   });
 });
+
+describe("errorHandler — o log nao vaza dado pessoal", () => {
+  it("nao despeja o meta do Prisma no log do 500 generico", () => {
+    const linhas: string[] = [];
+    const spy = vi
+      .spyOn(console, "error")
+      .mockImplementation((arg: unknown) => {
+        linhas.push(String(arg));
+      });
+
+    const erro = new Prisma.PrismaClientKnownRequestError(
+      "Falha desconhecida",
+      {
+        code: "P9999",
+        clientVersion: "7.8.0",
+        meta: { phone: "5511999999999", notes: "cliente é diabético" },
+      },
+    );
+
+    const res = handle(erro);
+
+    expect(res.statusCode).toBe(500);
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0]).not.toContain("5511999999999");
+    expect(linhas[0]).not.toContain("diabético");
+    expect(JSON.parse(linhas[0]!).err.code).toBe("P9999");
+
+    spy.mockRestore();
+  });
+
+  it("nao passa a mensagem do PrismaClientValidationError para o log", () => {
+    const linhas: string[] = [];
+    vi.spyOn(console, "error").mockImplementation((arg: unknown) => {
+      linhas.push(String(arg));
+    });
+
+    const erro = new Prisma.PrismaClientValidationError(
+      "Argument phone: 5511999999999 is invalid",
+      { clientVersion: "7.8.0" },
+    );
+
+    const res = handle(erro);
+
+    expect(res.statusCode).toBe(400);
+    expect(linhas[0]).not.toContain("5511999999999");
+  });
+});

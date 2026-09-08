@@ -2,6 +2,7 @@ import type { ErrorRequestHandler, RequestHandler } from "express";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 import { AppError } from "../errors/AppError";
+import { logger } from "../logger/logger";
 
 const SLOT_TAKEN_MESSAGE =
   "Este horário acabou de ser ocupado. Escolha outro horário e tente novamente";
@@ -115,7 +116,9 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   }
 
   if (err instanceof Prisma.PrismaClientValidationError) {
-    console.error("PrismaClientValidationError");
+    logger.error("Consulta invalida enviada ao Prisma", {
+      name: err.name,
+    });
 
     res.status(400).json({
       status: "error",
@@ -125,7 +128,7 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     return;
   }
 
-  console.error(err);
+  logger.error("Erro nao tratado", err);
 
   res.status(500).json({
     status: "error",
