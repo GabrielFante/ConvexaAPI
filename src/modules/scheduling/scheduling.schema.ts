@@ -11,6 +11,12 @@ export const availabilityQuerySchema = z.object({
     .min(5, "slotIntervalMinutes deve estar entre 5 e 240")
     .max(240, "slotIntervalMinutes deve estar entre 5 e 240")
     .optional(),
+  limit: z.coerce
+    .number()
+    .int()
+    .min(1, "limit deve estar entre 1 e 100")
+    .max(100, "limit deve estar entre 1 e 100")
+    .default(3),
 });
 
 export type AvailabilityQueryInput = z.infer<typeof availabilityQuerySchema>;
