@@ -106,12 +106,22 @@ const db = vi.hoisted(() => {
   };
 
   const collection = (rows: () => Row[], write: (next: Row[]) => void) => ({
-    findMany: vi.fn((args: { where: Record<string, unknown> }) =>
-      Promise.resolve(
-        rows()
-          .filter((row) => matches(row, args.where))
-          .map((row) => ({ ...row })),
-      ),
+    findMany: vi.fn(
+      (args: {
+        where: Record<string, unknown>;
+        select?: Record<string, unknown>;
+        skip?: number;
+        take?: number;
+      }) => {
+        const found = rows().filter((row) => matches(row, args.where));
+        const skip = args.skip ?? 0;
+        const page =
+          args.take === undefined ? found : found.slice(skip, skip + args.take);
+        return Promise.resolve(page.map((row) => project(row, args.select)));
+      },
+    ),
+    count: vi.fn((args: { where: Record<string, unknown> }) =>
+      Promise.resolve(rows().filter((row) => matches(row, args.where)).length),
     ),
     findFirst: vi.fn(
       (args: {
@@ -158,6 +168,11 @@ const db = vi.hoisted(() => {
         (next) => {
           appointments = next;
         },
+      ),
+      $transaction: vi.fn((operations: unknown) =>
+        Array.isArray(operations)
+          ? Promise.all(operations)
+          : Promise.resolve(operations),
       ),
       business: {
         findFirst: vi.fn(
@@ -218,8 +233,14 @@ describe("isolamento entre tenants por HTTP", () => {
       .set("authorization", bearer());
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveLength(1);
-    expect(response.body[0].id).toBe(CUSTOMER_OF_A);
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.data[0].id).toBe(CUSTOMER_OF_A);
+    expect(response.body.meta).toEqual({
+      page: 1,
+      perPage: 20,
+      total: 1,
+      totalPages: 1,
+    });
   });
 
   it("nao le cliente de outro tenant", async () => {
@@ -267,8 +288,8 @@ describe("isolamento entre tenants por HTTP", () => {
       .set("x-business-id", TENANT_B);
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveLength(1);
-    expect(response.body[0].id).toBe(CUSTOMER_OF_A);
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.data[0].id).toBe(CUSTOMER_OF_A);
   });
 
   it("o token do tenant B enxerga apenas os dados do tenant B", async () => {
@@ -277,8 +298,8 @@ describe("isolamento entre tenants por HTTP", () => {
       .set("authorization", bearer({ userId: OWNER_B, businessId: TENANT_B }));
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveLength(1);
-    expect(response.body[0].id).toBe(CUSTOMER_OF_B);
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.data[0].id).toBe(CUSTOMER_OF_B);
   });
 });
 
@@ -374,5 +395,40 @@ describe("cabecalhos de seguranca e limite de payload", () => {
 
     expect(response.status).toBe(413);
     expect(response.body.code).toBe("PAYLOAD_TOO_LARGE");
+  });
+});
+
+describe("paginacao nas listagens", () => {
+  it("aceita page e perPage na query string", async () => {
+    const response = await request(app)
+      .get("/api/customers?page=2&perPage=1")
+      .set("authorization", bearer());
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toHaveLength(0);
+    expect(response.body.meta).toEqual({
+      page: 2,
+      perPage: 1,
+      total: 1,
+      totalPages: 1,
+    });
+  });
+
+  it("recusa perPage acima do maximo com 400 e code de validacao", async () => {
+    const response = await request(app)
+      .get("/api/customers?perPage=500")
+      .set("authorization", bearer());
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("conta apenas os registros do proprio tenant", async () => {
+    const response = await request(app)
+      .get("/api/customers")
+      .set("authorization", bearer({ userId: OWNER_B, businessId: TENANT_B }));
+
+    expect(response.body.meta.total).toBe(1);
+    expect(response.body.data[0].id).toBe(CUSTOMER_OF_B);
   });
 });

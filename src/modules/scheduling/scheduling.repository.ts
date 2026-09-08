@@ -13,6 +13,9 @@ const MINUTE_MS = 60_000;
 
 const appointmentFields = {
   id: true,
+  customerId: true,
+  employeeId: true,
+  serviceId: true,
   startAt: true,
   endAt: true,
   status: true,

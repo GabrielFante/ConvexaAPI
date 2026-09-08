@@ -82,7 +82,6 @@ function appointment(
 ): FoundAppointment {
   return {
     id: "appt-1",
-    businessId: BUSINESS_ID,
     customerId: customer.id,
     employeeId: employee.id,
     serviceId: service.id,

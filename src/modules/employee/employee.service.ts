@@ -1,4 +1,5 @@
 import { AppError } from "../../shared/errors/AppError";
+import { buildPage, type Pagination } from "../../shared/validation/pagination";
 import { serviceService } from "../service/service.service";
 import { employeeRepository } from "./employee.repository";
 import type {
@@ -24,8 +25,9 @@ async function assertServicesOwned(serviceIds: string[]) {
 }
 
 export const employeeService = {
-  list() {
-    return employeeRepository.list();
+  async list(pagination: Pagination) {
+    const { data, total } = await employeeRepository.list(pagination);
+    return buildPage(data, total, pagination);
   },
 
   get(id: string) {

@@ -1,6 +1,10 @@
 import { prisma } from "../../shared/database/prisma";
 import { AppError } from "../../shared/errors/AppError";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
+import {
+  toPrismaPage,
+  type Pagination,
+} from "../../shared/validation/pagination";
 import type { CreateServiceInput, UpdateServiceInput } from "./service.schema";
 
 const serviceFields = {
@@ -18,12 +22,20 @@ function notFound() {
 }
 
 export const serviceRepository = {
-  list() {
-    return prisma.service.findMany({
-      where: { businessId: getBusinessId() },
-      orderBy: { createdAt: "desc" },
-      select: serviceFields,
-    });
+  async list(pagination: Pagination) {
+    const where = { businessId: getBusinessId() };
+
+    const [data, total] = await prisma.$transaction([
+      prisma.service.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        select: serviceFields,
+        ...toPrismaPage(pagination),
+      }),
+      prisma.service.count({ where }),
+    ]);
+
+    return { data, total };
   },
 
   findById(id: string) {

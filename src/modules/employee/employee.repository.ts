@@ -2,6 +2,10 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../shared/database/prisma";
 import { AppError } from "../../shared/errors/AppError";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
+import {
+  toPrismaPage,
+  type Pagination,
+} from "../../shared/validation/pagination";
 import type {
   CreateEmployeeInput,
   EmployeeHourInput,
@@ -57,12 +61,20 @@ async function findScopedOrFail(id: string) {
 }
 
 export const employeeRepository = {
-  list() {
-    return prisma.employee.findMany({
-      where: { businessId: getBusinessId() },
-      orderBy: { createdAt: "desc" },
-      select: employeeFields,
-    });
+  async list(pagination: Pagination) {
+    const where = { businessId: getBusinessId() };
+
+    const [data, total] = await prisma.$transaction([
+      prisma.employee.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        select: employeeFields,
+        ...toPrismaPage(pagination),
+      }),
+      prisma.employee.count({ where }),
+    ]);
+
+    return { data, total };
   },
 
   findById(id: string) {

@@ -97,7 +97,8 @@ describe("timeBlockRepository", () => {
       }),
     );
 
-    expect(created.businessId).toBe(TENANT_A);
+    expect(created.id).toBeTruthy();
+    expect(db.rows().at(-1)?.businessId).toBe(TENANT_A);
   });
 
   it("lista apenas os bloqueios do próprio tenant", async () => {

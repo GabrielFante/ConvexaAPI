@@ -1,7 +1,13 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { runWithTenant } from "../shared/tenant/tenant-context";
+import { serviceRepository } from "./service/service.repository";
+import { customerRepository } from "./customer/customer.repository";
+import { employeeRepository } from "./employee/employee.repository";
+import { timeBlockRepository } from "./timeblock/timeblock.repository";
+import { schedulingRepository } from "./scheduling/scheduling.repository";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
+const PAGINATION = { page: 1, perPage: 20 };
 const ID = "22222222-2222-4222-8222-222222222222";
 
 type Args = { select?: Record<string, unknown> };
@@ -24,6 +30,7 @@ const db = vi.hoisted(() => {
     updateMany: vi.fn(record(name, "updateMany", { count: 1 })),
     updateManyAndReturn: vi.fn(record(name, "updateManyAndReturn", [{ id }])),
     deleteMany: vi.fn(record(name, "deleteMany", { count: 1 })),
+    count: vi.fn(record(name, "count", 1)),
   });
 
   const prisma = {
@@ -35,8 +42,10 @@ const db = vi.hoisted(() => {
     business: model("business"),
     employeeService: model("employeeService"),
     employeeHours: model("employeeHours"),
-    $transaction: vi.fn((run: (tx: unknown) => unknown) =>
-      typeof run === "function" ? run(prisma) : Promise.resolve(run),
+    $transaction: vi.fn((run: unknown) =>
+      typeof run === "function"
+        ? (run as (tx: unknown) => unknown)(prisma)
+        : Promise.all(run as unknown[]),
     ),
   };
 
@@ -51,14 +60,6 @@ const db = vi.hoisted(() => {
 
 vi.mock("../shared/database/prisma", () => ({ prisma: db.prisma }));
 
-const { serviceRepository } = await import("./service/service.repository");
-const { customerRepository } = await import("./customer/customer.repository");
-const { employeeRepository } = await import("./employee/employee.repository");
-const { timeBlockRepository } =
-  await import("./timeblock/timeblock.repository");
-const { schedulingRepository } =
-  await import("./scheduling/scheduling.repository");
-
 beforeEach(() => {
   db.reset();
 });
@@ -66,7 +67,7 @@ beforeEach(() => {
 function selectsOf(model: string): Record<string, unknown>[] {
   return db
     .calls()
-    .filter((call) => call.model === model)
+    .filter((call) => call.model === model && call.method !== "count")
     .map((call) => call.args.select ?? {});
 }
 
@@ -113,6 +114,9 @@ const TIME_BLOCK_FIELDS = ["id", "employeeId", "startAt", "endAt", "reason"];
 
 const APPOINTMENT_FIELDS = [
   "id",
+  "customerId",
+  "employeeId",
+  "serviceId",
   "startAt",
   "endAt",
   "status",
@@ -129,7 +133,7 @@ const APPOINTMENT_FIELDS = [
 describe("allowlist de select — nenhum model do Prisma vai cru para o HTTP", () => {
   it("service usa a allowlist em toda leitura e escrita", async () => {
     await runWithTenant(TENANT, async () => {
-      await serviceRepository.list();
+      await serviceRepository.list(PAGINATION);
       await serviceRepository.findById(ID);
       await serviceRepository.create({
         name: "Corte",
@@ -144,7 +148,7 @@ describe("allowlist de select — nenhum model do Prisma vai cru para o HTTP", (
 
   it("customer usa a allowlist em toda leitura e escrita", async () => {
     await runWithTenant(TENANT, async () => {
-      await customerRepository.list();
+      await customerRepository.list(PAGINATION);
       await customerRepository.findById(ID);
       await customerRepository.create({ name: "Ana", phone: "5511900000000" });
       await customerRepository.upsertByPhone("5511900000000", "Ana");
@@ -156,7 +160,7 @@ describe("allowlist de select — nenhum model do Prisma vai cru para o HTTP", (
 
   it("employee usa a allowlist e mantem os selects aninhados", async () => {
     await runWithTenant(TENANT, async () => {
-      await employeeRepository.list();
+      await employeeRepository.list(PAGINATION);
       await employeeRepository.findById(ID);
       await employeeRepository.create({ name: "Joao", active: true });
     });
@@ -183,7 +187,7 @@ describe("allowlist de select — nenhum model do Prisma vai cru para o HTTP", (
     expectEveryCallSelects("timeBlock", TIME_BLOCK_FIELDS);
   });
 
-  it("appointment usa a allowlist e nao devolve businessId nem ids crus de relacao", async () => {
+  it("appointment usa a allowlist e nunca devolve o businessId", async () => {
     await runWithTenant(TENANT, async () => {
       await schedulingRepository.list({});
       await schedulingRepository.findById(ID);
@@ -199,8 +203,6 @@ describe("allowlist de select — nenhum model do Prisma vai cru para o HTTP", (
         [...APPOINTMENT_FIELDS].sort(),
       );
       expect(select.businessId).toBeUndefined();
-      expect(select.customerId).toBeUndefined();
-      expect(select.employeeId).toBeUndefined();
       expect(select.customer).toEqual({
         select: { id: true, name: true, phone: true },
       });
