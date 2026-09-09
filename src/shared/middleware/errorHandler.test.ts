@@ -5,7 +5,7 @@ import { errorHandler } from "./errorHandler";
 
 type CapturedResponse = {
   statusCode?: number;
-  body?: { status: string; message: string };
+  body?: { status: string; message: string; code?: string };
 };
 
 function handle(err: unknown): CapturedResponse {
@@ -16,7 +16,7 @@ function handle(err: unknown): CapturedResponse {
       captured.statusCode = code;
       return this;
     },
-    json(body: { status: string; message: string }) {
+    json(body: { status: string; message: string; code?: string }) {
       captured.body = body;
       return this;
     },
@@ -137,5 +137,54 @@ describe("errorHandler — o log nao vaza dado pessoal", () => {
 
     expect(res.statusCode).toBe(400);
     expect(linhas[0]).not.toContain("5511999999999");
+  });
+});
+
+function driverAdapterError(code: string, message: string): Error {
+  const error = new Error(message);
+  error.name = "DriverAdapterError";
+  Object.assign(error, {
+    cause: {
+      code,
+      kind: "postgres",
+      message,
+      detail: "Failing row contains (uuid, uuid, 9, 540, 1080).",
+    },
+  });
+  return error;
+}
+
+describe("errorHandler — SQLSTATE do driver do Prisma 7", () => {
+  it("traduz 23514 em 400 sem repassar o texto cru do Postgres", () => {
+    const erro = driverAdapterError(
+      "23514",
+      'new row for relation "BusinessHours" violates check constraint "BusinessHours_minutes_check"',
+    );
+
+    const res = handle(erro);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body?.code).toBe("CHECK_VIOLATION");
+    expect(res.body?.message).not.toContain("check constraint");
+    expect(res.body?.message).not.toContain("23514");
+  });
+
+  it("traduz a violacao da constraint de exclusao em 409 SLOT_CONFLICT", () => {
+    const erro = driverAdapterError(
+      "23P01",
+      'conflicting key value violates exclusion constraint "Appointment_employee_no_overlap"',
+    );
+
+    const res = handle(erro);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body?.code).toBe("SLOT_CONFLICT");
+    expect(res.body?.message).not.toContain("exclusion constraint");
+  });
+
+  it("nao devolve o detail do Postgres, que carrega a linha inteira", () => {
+    const erro = driverAdapterError("23514", "check constraint");
+
+    expect(JSON.stringify(handle(erro).body)).not.toContain("Failing row");
   });
 });

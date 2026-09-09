@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import request from "supertest";
 import { bearer, OWNER_B, STAFF_A, TENANT_A, TENANT_B } from "./test/http";
+import { app } from "./app";
 
 const CUSTOMER_OF_A = "cccccccc-1111-4111-8111-111111111111";
 const CUSTOMER_OF_B = "cccccccc-2222-4222-8222-222222222222";
@@ -193,8 +194,6 @@ const db = vi.hoisted(() => {
 });
 
 vi.mock("./shared/database/prisma", () => ({ prisma: db.prisma }));
-
-const { app } = await import("./app");
 
 beforeEach(() => {
   db.reset();

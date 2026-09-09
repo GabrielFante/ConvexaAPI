@@ -2,12 +2,15 @@ import type { ErrorRequestHandler, RequestHandler } from "express";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 import { AppError } from "../errors/AppError";
+import {
+  CHECK_VIOLATION,
+  EXCLUSION_VIOLATION,
+  hasSqlState,
+} from "../database/sqlstate";
 import { logger } from "../logger/logger";
 
 const SLOT_TAKEN_MESSAGE =
   "Este horário acabou de ser ocupado. Escolha outro horário e tente novamente";
-
-const EXCLUSION_CONSTRAINT_SQLSTATE = "23P01";
 
 const prismaErrors: Record<
   string,
@@ -103,14 +106,20 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     }
   }
 
-  if (
-    err instanceof Prisma.PrismaClientUnknownRequestError &&
-    err.message.includes(EXCLUSION_CONSTRAINT_SQLSTATE)
-  ) {
+  if (hasSqlState(err, EXCLUSION_VIOLATION)) {
     res.status(409).json({
       status: "error",
       code: "SLOT_CONFLICT",
       message: SLOT_TAKEN_MESSAGE,
+    });
+    return;
+  }
+
+  if (hasSqlState(err, CHECK_VIOLATION)) {
+    res.status(400).json({
+      status: "error",
+      code: "CHECK_VIOLATION",
+      message: "Dados de entrada inválidos",
     });
     return;
   }
