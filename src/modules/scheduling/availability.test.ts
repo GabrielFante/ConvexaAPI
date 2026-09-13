@@ -3,6 +3,7 @@ import { parseCalendarDay, zonedDayToUtc } from "../../shared/utils/timezone";
 import {
   checkSlot,
   computeAvailability,
+  employeeWindows,
   intersectIntervals,
   mergeIntervals,
 } from "./availability";
@@ -36,6 +37,28 @@ function context(overrides: Partial<ScheduleContext> = {}): ScheduleContext {
 function startTimes(ctx: ScheduleContext): string[] {
   return computeAvailability(ctx).map((slot) => slot.startAt.toISOString());
 }
+
+const SPLIT_BUSINESS_HOURS = [
+  { dayOfWeek: 2, opensAt: 8 * 60, closesAt: 12 * 60 },
+  { dayOfWeek: 2, opensAt: 14 * 60, closesAt: 18 * 60 },
+];
+
+const SPLIT_START_TIMES = [
+  at(8),
+  at(8, 30),
+  at(9),
+  at(9, 30),
+  at(10),
+  at(10, 30),
+  at(11),
+  at(14),
+  at(14, 30),
+  at(15),
+  at(15, 30),
+  at(16),
+  at(16, 30),
+  at(17),
+].map((date) => date.toISOString());
 
 describe("computeAvailability", () => {
   it("gera slots respeitando o passo e o horário de funcionamento", () => {
@@ -268,6 +291,99 @@ describe("computeAvailability", () => {
     ]);
   });
 
+  it("respeita jornada partida da empresa sem oferecer o intervalo de almoço", () => {
+    const ctx = context({ businessHours: SPLIT_BUSINESS_HOURS });
+
+    expect(startTimes(ctx)).toEqual(SPLIT_START_TIMES);
+    expect(
+      checkSlot(ctx, {
+        employeeId: "emp-1",
+        startAt: at(11, 30),
+        endAt: at(12, 30),
+      }),
+    ).toBe("OUTSIDE_BUSINESS_HOURS");
+    expect(
+      checkSlot(ctx, { employeeId: "emp-1", startAt: at(12), endAt: at(13) }),
+    ).toBe("OUTSIDE_BUSINESS_HOURS");
+    expect(
+      checkSlot(ctx, { employeeId: "emp-1", startAt: at(14), endAt: at(15) }),
+    ).toBeNull();
+  });
+
+  it("respeita jornada partida do funcionário dentro do horário da empresa", () => {
+    const ctx = context({
+      businessHours: [{ dayOfWeek: 2, opensAt: 8 * 60, closesAt: 18 * 60 }],
+      employees: [
+        {
+          employeeId: "emp-1",
+          hours: SPLIT_BUSINESS_HOURS.map((hour) => ({
+            dayOfWeek: hour.dayOfWeek,
+            startsAt: hour.opensAt,
+            endsAt: hour.closesAt,
+          })),
+        },
+      ],
+    });
+
+    expect(startTimes(ctx)).toEqual(SPLIT_START_TIMES);
+    expect(
+      checkSlot(ctx, {
+        employeeId: "emp-1",
+        startAt: at(11, 30),
+        endAt: at(12, 30),
+      }),
+    ).toBe("OUTSIDE_EMPLOYEE_HOURS");
+  });
+
+  it("funcionário sem jornada cadastrada herda a jornada partida da empresa", () => {
+    const ctx = context({ businessHours: SPLIT_BUSINESS_HOURS });
+
+    expect(employeeWindows(ctx, "emp-1")).toEqual([
+      { start: 8 * 60, end: 12 * 60 },
+      { start: 14 * 60, end: 18 * 60 },
+    ]);
+  });
+
+  it("funcionário com jornada em outros dias não trabalha no dia sem horas", () => {
+    const ctx = context({
+      employees: [
+        { employeeId: "emp-1", hours: [] },
+        {
+          employeeId: "emp-2",
+          hours: [{ dayOfWeek: 4, startsAt: 9 * 60, endsAt: 12 * 60 }],
+        },
+      ],
+    });
+
+    const employees = new Set(
+      computeAvailability(ctx).map((slot) => slot.employeeId),
+    );
+
+    expect([...employees]).toEqual(["emp-1"]);
+    expect(
+      checkSlot(ctx, { employeeId: "emp-1", startAt: at(9), endAt: at(10) }),
+    ).toBeNull();
+    expect(
+      checkSlot(ctx, { employeeId: "emp-2", startAt: at(9), endAt: at(10) }),
+    ).toBe("OUTSIDE_EMPLOYEE_HOURS");
+  });
+
+  it("limita a jornada do funcionário ao horário da empresa", () => {
+    const ctx = context({
+      employees: [
+        {
+          employeeId: "emp-1",
+          hours: [{ dayOfWeek: 2, startsAt: 7 * 60, endsAt: 20 * 60 }],
+        },
+      ],
+    });
+
+    expect(employeeWindows(ctx, "emp-1")).toEqual([
+      { start: 9 * 60, end: 12 * 60 },
+    ]);
+    expect(startTimes(ctx)).toEqual(startTimes(context()));
+  });
+
   it("aceita um horário válido", () => {
     expect(
       checkSlot(context(), {
@@ -276,6 +392,43 @@ describe("computeAvailability", () => {
         endAt: at(10),
       }),
     ).toBeNull();
+  });
+});
+
+describe("computeAvailability em dia de transição do horário de verão", () => {
+  const NEW_YORK = "America/New_York";
+
+  function transitionContext(isoDay: string): ScheduleContext {
+    return context({
+      timezone: NEW_YORK,
+      day: parseCalendarDay(isoDay),
+      businessHours: [{ dayOfWeek: 0, opensAt: 0, closesAt: 4 * 60 }],
+      now: new Date("2026-01-01T00:00:00.000Z"),
+    });
+  }
+
+  it("não duplica slots na hora que deixa de existir", () => {
+    expect(startTimes(transitionContext("2026-03-08"))).toEqual([
+      "2026-03-08T05:00:00.000Z",
+      "2026-03-08T05:30:00.000Z",
+      "2026-03-08T06:00:00.000Z",
+      "2026-03-08T06:30:00.000Z",
+      "2026-03-08T07:00:00.000Z",
+    ]);
+  });
+
+  it("oferece as duas ocorrências da hora que se repete", () => {
+    expect(startTimes(transitionContext("2026-11-01"))).toEqual([
+      "2026-11-01T04:00:00.000Z",
+      "2026-11-01T04:30:00.000Z",
+      "2026-11-01T05:00:00.000Z",
+      "2026-11-01T05:30:00.000Z",
+      "2026-11-01T06:00:00.000Z",
+      "2026-11-01T06:30:00.000Z",
+      "2026-11-01T07:00:00.000Z",
+      "2026-11-01T07:30:00.000Z",
+      "2026-11-01T08:00:00.000Z",
+    ]);
   });
 });
 

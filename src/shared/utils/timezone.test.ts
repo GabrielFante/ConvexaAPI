@@ -31,6 +31,26 @@ describe("timezone", () => {
     ).toBe("2026-01-15T17:00:00.000Z");
   });
 
+  it("leva a hora inexistente do início do horário de verão para uma hora antes", () => {
+    expect(
+      zonedDayToUtc(
+        parseCalendarDay("2026-03-08"),
+        2 * 60 + 30,
+        "America/New_York",
+      ).toISOString(),
+    ).toBe("2026-03-08T06:30:00.000Z");
+  });
+
+  it("escolhe a primeira ocorrência da hora repetida no fim do horário de verão", () => {
+    expect(
+      zonedDayToUtc(
+        parseCalendarDay("2026-11-01"),
+        60 + 30,
+        "America/New_York",
+      ).toISOString(),
+    ).toBe("2026-11-01T05:30:00.000Z");
+  });
+
   it("mantém o dia local correto perto da meia-noite", () => {
     const parts = getZonedParts(
       new Date("2026-08-12T02:00:00.000Z"),

@@ -260,7 +260,8 @@ export function computeAvailability(
     return [];
   }
 
-  const step = Math.max(1, context.slotIntervalMinutes);
+  const step = Math.max(1, context.slotIntervalMinutes) * MINUTE_MS;
+  const duration = context.durationMinutes * MINUTE_MS;
   const slots: AvailabilitySlot[] = [];
 
   for (const employee of context.employees) {
@@ -268,31 +269,24 @@ export function computeAvailability(
       continue;
     }
 
-    const windows = employeeWindows(context, employee.employeeId);
+    const windows = toUtcIntervals(
+      context,
+      employeeWindows(context, employee.employeeId),
+    );
     const busy = blockingIntervals(context, employee.employeeId);
 
     for (const window of windows) {
-      const windowEnd = zonedDayToUtc(
-        context.day,
-        window.end,
-        context.timezone,
-      );
+      const windowEnd = window.end.getTime();
 
       for (
-        let minute = window.start;
-        minute + context.durationMinutes <= window.end;
-        minute += step
+        let start = window.start.getTime();
+        start + duration <= windowEnd;
+        start += step
       ) {
-        const startAt = zonedDayToUtc(context.day, minute, context.timezone);
-        const endAt = new Date(
-          startAt.getTime() + context.durationMinutes * MINUTE_MS,
-        );
+        const startAt = new Date(start);
+        const endAt = new Date(start + duration);
 
-        if (endAt.getTime() > windowEnd.getTime()) {
-          continue;
-        }
-
-        if (startAt.getTime() < context.now.getTime()) {
+        if (start < context.now.getTime()) {
           continue;
         }
 
