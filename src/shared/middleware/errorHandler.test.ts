@@ -182,6 +182,19 @@ describe("errorHandler — SQLSTATE do driver do Prisma 7", () => {
     expect(res.body?.message).not.toContain("exclusion constraint");
   });
 
+  it("traduz a falha de serializacao crua (40001) em 409 SLOT_CONFLICT", () => {
+    const erro = driverAdapterError(
+      "40001",
+      "could not serialize access due to read/write dependencies among transactions",
+    );
+
+    const res = handle(erro);
+
+    expect(res.statusCode).toBe(409);
+    expect(res.body?.code).toBe("SLOT_CONFLICT");
+    expect(res.body?.message).not.toContain("serialize");
+  });
+
   it("nao devolve o detail do Postgres, que carrega a linha inteira", () => {
     const erro = driverAdapterError("23514", "check constraint");
 

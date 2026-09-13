@@ -6,6 +6,7 @@ import {
   CHECK_VIOLATION,
   EXCLUSION_VIOLATION,
   hasSqlState,
+  SERIALIZATION_FAILURE,
 } from "../database/sqlstate";
 import { logger } from "../logger/logger";
 
@@ -106,7 +107,10 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     }
   }
 
-  if (hasSqlState(err, EXCLUSION_VIOLATION)) {
+  if (
+    hasSqlState(err, EXCLUSION_VIOLATION) ||
+    hasSqlState(err, SERIALIZATION_FAILURE)
+  ) {
     res.status(409).json({
       status: "error",
       code: "SLOT_CONFLICT",
