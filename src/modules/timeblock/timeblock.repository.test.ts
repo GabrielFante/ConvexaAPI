@@ -21,9 +21,12 @@ const db = vi.hoisted(() => {
     endAt?: { gt: Date };
     startAt?: { lt: Date };
   };
-  type DeleteWhere = { id: string; businessId: string };
+  type ByIdWhere = { id: string; businessId: string };
 
   let rows: Row[] = [];
+
+  const matchesId = (row: Row, where: ByIdWhere) =>
+    row.id === where.id && row.businessId === where.businessId;
 
   return {
     seed(seedRows: Row[]) {
@@ -46,20 +49,28 @@ const db = vi.hoisted(() => {
             ),
           ),
         ),
+        findFirst: vi.fn((args: { where: ByIdWhere }) =>
+          Promise.resolve(
+            rows.find((row) => matchesId(row, args.where)) ?? null,
+          ),
+        ),
         create: vi.fn((args: { data: Omit<Row, "id"> }) => {
           const created = { ...args.data, id: `block-${rows.length + 1}` };
           rows.push(created);
           return Promise.resolve({ ...created });
         }),
-        deleteMany: vi.fn((args: { where: DeleteWhere }) => {
+        updateManyAndReturn: vi.fn(
+          (args: { where: ByIdWhere; data: Partial<Row> }) => {
+            const updated = rows
+              .filter((row) => matchesId(row, args.where))
+              .map((row) => Object.assign(row, args.data));
+
+            return Promise.resolve(updated.map((row) => ({ ...row })));
+          },
+        ),
+        deleteMany: vi.fn((args: { where: ByIdWhere }) => {
           const before = rows.length;
-          rows = rows.filter(
-            (row) =>
-              !(
-                row.id === args.where.id &&
-                row.businessId === args.where.businessId
-              ),
-          );
+          rows = rows.filter((row) => !matchesId(row, args.where));
           return Promise.resolve({ count: before - rows.length });
         }),
       },
@@ -126,6 +137,42 @@ describe("timeBlockRepository", () => {
     );
 
     expect(blocks.map((block) => block.id)).toEqual([BLOCK_OF_B]);
+  });
+
+  it("busca o bloqueio do próprio tenant pelo id", async () => {
+    const block = await runWithTenant(TENANT_B, () =>
+      timeBlockRepository.findById(BLOCK_OF_B),
+    );
+
+    expect(block?.id).toBe(BLOCK_OF_B);
+  });
+
+  it("não encontra bloqueio de outro tenant pelo id", async () => {
+    const block = await runWithTenant(TENANT_A, () =>
+      timeBlockRepository.findById(BLOCK_OF_B),
+    );
+
+    expect(block).toBeNull();
+  });
+
+  it("atualiza o bloqueio do próprio tenant", async () => {
+    const updated = await runWithTenant(TENANT_B, () =>
+      timeBlockRepository.update(BLOCK_OF_B, { reason: "Dentista" }),
+    );
+
+    expect(updated.reason).toBe("Dentista");
+  });
+
+  it("não atualiza bloqueio de outro tenant e responde 404", async () => {
+    const attempt = runWithTenant(TENANT_A, () =>
+      timeBlockRepository.update(BLOCK_OF_B, { reason: "Invadido" }),
+    );
+
+    await expect(attempt).rejects.toMatchObject({
+      statusCode: 404,
+      message: "Bloqueio não encontrado",
+    });
+    expect(db.rows()[0]).not.toHaveProperty("reason", "Invadido");
   });
 
   it("remove o bloqueio do próprio tenant", async () => {

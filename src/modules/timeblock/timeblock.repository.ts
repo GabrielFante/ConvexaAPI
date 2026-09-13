@@ -4,6 +4,7 @@ import { getBusinessId } from "../../shared/tenant/tenant-context";
 import type {
   CreateTimeBlockInput,
   ListTimeBlocksFilter,
+  UpdateTimeBlockInput,
 } from "./timeblock.schema";
 
 const timeBlockFields = {
@@ -13,6 +14,10 @@ const timeBlockFields = {
   endAt: true,
   reason: true,
 } as const;
+
+function notFound() {
+  return new AppError("Bloqueio não encontrado", 404);
+}
 
 export const timeBlockRepository = {
   list(filter: ListTimeBlocksFilter) {
@@ -28,11 +33,32 @@ export const timeBlockRepository = {
     });
   },
 
+  findById(id: string) {
+    return prisma.timeBlock.findFirst({
+      where: { id, businessId: getBusinessId() },
+      select: timeBlockFields,
+    });
+  },
+
   create(data: CreateTimeBlockInput) {
     return prisma.timeBlock.create({
       data: { ...data, businessId: getBusinessId() },
       select: timeBlockFields,
     });
+  },
+
+  async update(id: string, data: UpdateTimeBlockInput) {
+    const [timeBlock] = await prisma.timeBlock.updateManyAndReturn({
+      where: { id, businessId: getBusinessId() },
+      data,
+      select: timeBlockFields,
+    });
+
+    if (!timeBlock) {
+      throw notFound();
+    }
+
+    return timeBlock;
   },
 
   async delete(id: string) {
@@ -41,7 +67,7 @@ export const timeBlockRepository = {
     });
 
     if (!count) {
-      throw new AppError("Bloqueio não encontrado", 404);
+      throw notFound();
     }
   },
 };

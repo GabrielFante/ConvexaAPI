@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   createTimeBlockSchema,
   listTimeBlocksSchema,
+  updateTimeBlockSchema,
 } from "./timeblock.schema";
 
 describe("timeblock schema", () => {
@@ -45,6 +46,23 @@ describe("timeblock schema", () => {
       listTimeBlocksSchema.safeParse({
         from: "2026-12-26T00:00:00Z",
         to: "2026-12-25T00:00:00Z",
+      }).success,
+    ).toBe(false);
+  });
+
+  it("aceita update parcial e recusa intervalo invertido", () => {
+    expect(updateTimeBlockSchema.safeParse({}).success).toBe(true);
+    expect(
+      updateTimeBlockSchema.safeParse({ reason: "Dentista" }).success,
+    ).toBe(true);
+    expect(
+      updateTimeBlockSchema.safeParse({ startAt: "2026-12-25T10:00:00Z" })
+        .success,
+    ).toBe(true);
+    expect(
+      updateTimeBlockSchema.safeParse({
+        startAt: "2026-12-25T12:00:00Z",
+        endAt: "2026-12-25T10:00:00Z",
       }).success,
     ).toBe(false);
   });

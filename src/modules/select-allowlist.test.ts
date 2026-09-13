@@ -178,10 +178,12 @@ describe("allowlist de select — nenhum model do Prisma vai cru para o HTTP", (
   it("timeBlock usa a allowlist em toda leitura e escrita", async () => {
     await runWithTenant(TENANT, async () => {
       await timeBlockRepository.list({});
+      await timeBlockRepository.findById(ID);
       await timeBlockRepository.create({
         startAt: new Date("2026-10-01T12:00:00.000Z"),
         endAt: new Date("2026-10-01T13:00:00.000Z"),
       });
+      await timeBlockRepository.update(ID, { reason: "Dentista" });
     });
 
     expectEveryCallSelects("timeBlock", TIME_BLOCK_FIELDS);

@@ -8,6 +8,8 @@ const CUSTOMER_OF_B = "cccccccc-2222-4222-8222-222222222222";
 const APPOINTMENT_OF_A = "dddddddd-1111-4111-8111-111111111111";
 const APPOINTMENT_OF_B = "dddddddd-2222-4222-8222-222222222222";
 const CANCELLED_OF_A = "dddddddd-3333-4333-8333-333333333333";
+const TIME_BLOCK_OF_A = "eeeeeeee-1111-4111-8111-111111111111";
+const TIME_BLOCK_OF_B = "eeeeeeee-2222-4222-8222-222222222222";
 
 const db = vi.hoisted(() => {
   type Row = Record<string, unknown> & { id: string; businessId: string };
@@ -42,6 +44,25 @@ const db = vi.hoisted(() => {
       id: "dddddddd-3333-4333-8333-333333333333",
       businessId: "11111111-1111-4111-8111-111111111111",
       status: "CANCELLED",
+    },
+  ];
+
+  const initialTimeBlocks: Row[] = [
+    {
+      id: "eeeeeeee-1111-4111-8111-111111111111",
+      businessId: "11111111-1111-4111-8111-111111111111",
+      employeeId: null,
+      startAt: new Date("2026-12-25T13:00:00.000Z"),
+      endAt: new Date("2026-12-25T15:00:00.000Z"),
+      reason: "Feriado do tenant A",
+    },
+    {
+      id: "eeeeeeee-2222-4222-8222-222222222222",
+      businessId: "22222222-2222-4222-8222-222222222222",
+      employeeId: null,
+      startAt: new Date("2026-12-25T13:00:00.000Z"),
+      endAt: new Date("2026-12-25T15:00:00.000Z"),
+      reason: "Feriado do tenant B",
     },
   ];
 
@@ -84,6 +105,7 @@ const db = vi.hoisted(() => {
 
   let customers: Row[] = [];
   let appointments: Row[] = [];
+  let timeBlocks: Row[] = [];
 
   const matches = (row: Row, where: Record<string, unknown>) =>
     Object.entries(where).every(([field, value]) => row[field] === value);
@@ -155,8 +177,10 @@ const db = vi.hoisted(() => {
     reset() {
       customers = initialCustomers.map((row) => ({ ...row }));
       appointments = initialAppointments.map((row) => ({ ...row }));
+      timeBlocks = initialTimeBlocks.map((row) => ({ ...row }));
     },
     customers: () => customers,
+    timeBlocks: () => timeBlocks,
     prisma: {
       customer: collection(
         () => customers,
@@ -168,6 +192,12 @@ const db = vi.hoisted(() => {
         () => appointments,
         (next) => {
           appointments = next;
+        },
+      ),
+      timeBlock: collection(
+        () => timeBlocks,
+        (next) => {
+          timeBlocks = next;
         },
       ),
       $transaction: vi.fn((operations: unknown) =>
@@ -278,6 +308,55 @@ describe("isolamento entre tenants por HTTP", () => {
 
     expect(response.status).toBe(404);
     expect(response.body.code).toBe("APPOINTMENT_NOT_FOUND");
+  });
+
+  it("nao le bloqueio de outro tenant", async () => {
+    const response = await request(app)
+      .get(`/api/time-blocks/${TIME_BLOCK_OF_B}`)
+      .set("authorization", bearer());
+
+    expect(response.status).toBe(404);
+  });
+
+  it("le o proprio bloqueio sem devolver o businessId", async () => {
+    const response = await request(app)
+      .get(`/api/time-blocks/${TIME_BLOCK_OF_A}`)
+      .set("authorization", bearer());
+
+    expect(response.status).toBe(200);
+    expect(response.body.id).toBe(TIME_BLOCK_OF_A);
+    expect(response.body).not.toHaveProperty("businessId");
+  });
+
+  it("nao edita bloqueio de outro tenant", async () => {
+    const response = await request(app)
+      .patch(`/api/time-blocks/${TIME_BLOCK_OF_B}`)
+      .set("authorization", bearer())
+      .send({ reason: "Invadido" });
+
+    expect(response.status).toBe(404);
+
+    const untouched = db.timeBlocks().find((row) => row.id === TIME_BLOCK_OF_B);
+    expect(untouched?.reason).toBe("Feriado do tenant B");
+  });
+
+  it("edita o proprio bloqueio", async () => {
+    const response = await request(app)
+      .patch(`/api/time-blocks/${TIME_BLOCK_OF_A}`)
+      .set("authorization", bearer())
+      .send({ reason: "Dentista" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.reason).toBe("Dentista");
+  });
+
+  it("recusa update que inverte o intervalo ja gravado", async () => {
+    const response = await request(app)
+      .patch(`/api/time-blocks/${TIME_BLOCK_OF_A}`)
+      .set("authorization", bearer())
+      .send({ startAt: "2026-12-25T16:00:00.000Z" });
+
+    expect(response.status).toBe(400);
   });
 
   it("ignora o header x-business-id apontando para outro tenant", async () => {
