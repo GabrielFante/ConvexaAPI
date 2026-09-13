@@ -13,4 +13,7 @@ export interface Mailer {
   send(message: MailMessage): Promise<void>;
 }
 
-export const mailer: Mailer = env.RESEND_API_KEY ? resendMailer : consoleMailer;
+export const mailer: Mailer =
+  env.MAIL_DRIVER === "console" || !env.RESEND_API_KEY
+    ? consoleMailer
+    : resendMailer;
