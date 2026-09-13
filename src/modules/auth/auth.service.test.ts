@@ -7,6 +7,7 @@ import { runWithAuth } from "../../shared/tenant/tenant-context";
 const repositoryMock = vi.hoisted(() => ({
   findUserByEmail: vi.fn(),
   findUserById: vi.fn(),
+  findCurrentUser: vi.fn(),
   createBusinessWithOwner: vi.fn(),
   saveRefreshToken: vi.fn(),
   findRefreshTokenByHash: vi.fn(),
@@ -360,10 +361,15 @@ describe("authService.me", () => {
   });
 
   it("devolve o usuário e a empresa do token", async () => {
-    repositoryMock.findUserById.mockResolvedValue(storedUser);
+    repositoryMock.findCurrentUser.mockResolvedValue(storedUser);
 
     const profile = await runWithAuth(current, () => authService.me());
 
+    expect(repositoryMock.findCurrentUser).toHaveBeenCalledWith(
+      USER_ID,
+      BUSINESS_ID,
+    );
+    expect(repositoryMock.findUserById).not.toHaveBeenCalled();
     expect(profile.user).toEqual({
       id: USER_ID,
       name: "Gabriel",
@@ -374,18 +380,15 @@ describe("authService.me", () => {
   });
 
   it("não vaza o hash da senha", async () => {
-    repositoryMock.findUserById.mockResolvedValue(storedUser);
+    repositoryMock.findCurrentUser.mockResolvedValue(storedUser);
 
     const profile = await runWithAuth(current, () => authService.me());
 
     expect(profile.user).not.toHaveProperty("passwordHash");
   });
 
-  it("recusa quando o usuário mudou de tenant desde a emissão do token", async () => {
-    repositoryMock.findUserById.mockResolvedValue({
-      ...storedUser,
-      businessId: OTHER_BUSINESS_ID,
-    });
+  it("recusa quando o usuário não pertence mais ao tenant do token", async () => {
+    repositoryMock.findCurrentUser.mockResolvedValue(null);
 
     await expect(runWithAuth(current, () => authService.me())).rejects.toThrow(
       AppError,
@@ -393,7 +396,7 @@ describe("authService.me", () => {
   });
 
   it("recusa usuário desativado", async () => {
-    repositoryMock.findUserById.mockResolvedValue({
+    repositoryMock.findCurrentUser.mockResolvedValue({
       ...storedUser,
       active: false,
     });

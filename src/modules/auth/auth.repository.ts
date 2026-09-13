@@ -66,6 +66,17 @@ export const authRepository = {
     });
   },
 
+  findCurrentUser(id: string, businessId: string) {
+    return prisma.user.findFirst({
+      where: { id, businessId },
+      select: {
+        ...publicUserFields,
+        active: true,
+        business: { select: publicBusinessFields },
+      },
+    });
+  },
+
   createBusinessWithOwner(business: RegisterBusinessInput, owner: OwnerRecord) {
     return prisma.$transaction(async (tx) => {
       const createdBusiness = await tx.business.create({

@@ -216,9 +216,12 @@ export const authService = {
 
   async me() {
     const current = getCurrentUser();
-    const found = await authRepository.findUserById(current.userId);
+    const found = await authRepository.findCurrentUser(
+      current.userId,
+      current.businessId,
+    );
 
-    if (!found || !found.active || found.businessId !== current.businessId) {
+    if (!found || !found.active) {
       throw new AppError(INVALID_SESSION_MESSAGE, 401);
     }
 
