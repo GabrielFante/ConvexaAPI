@@ -8,6 +8,8 @@
     "postinstall": "prisma generate",
     "dev": "tsx watch src/server.ts",
     "build": "prisma generate && tsc -p tsconfig.build.json",
+    "migrate:deploy": "prisma migrate deploy",
+    "prune:prod": "node -e \"for (const d of ['prisma','mysql2','@prisma/config']) require('node:fs').rmSync('node_modules/'+d,{recursive:true,force:true})\"",
     "start": "node dist/server.js",
     "test": "vitest",
     "lint": "eslint .",
