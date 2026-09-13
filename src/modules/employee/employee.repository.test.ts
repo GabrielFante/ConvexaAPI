@@ -6,6 +6,9 @@ import { employeeRepository } from "./employee.repository";
 const TENANT_A = "11111111-1111-4111-8111-111111111111";
 const TENANT_B = "22222222-2222-4222-8222-222222222222";
 const EMPLOYEE_OF_B = "55555555-5555-4555-8555-555555555555";
+const SERVICE_OF_A = "66666666-6666-4666-8666-666666666666";
+const SERVICE_OF_B = "77777777-7777-4777-8777-777777777777";
+const OTHER_SERVICE_OF_B = "88888888-8888-4888-8888-888888888888";
 
 const db = vi.hoisted(() => {
   type Employee = { id: string; businessId: string; name: string };
@@ -22,10 +25,13 @@ const db = vi.hoisted(() => {
     employee: { businessId: string };
   };
 
+  type CatalogService = { id: string; businessId: string };
+
   const state = {
     employees: [] as Employee[],
     services: [] as EmployeeService[],
     hours: [] as EmployeeHour[],
+    catalog: [] as CatalogService[],
   };
 
   const findEmployee = (where: ScopedWhere) =>
@@ -57,7 +63,44 @@ const db = vi.hoisted(() => {
   };
 
   const client = {
+    service: {
+      count: vi.fn(
+        (args: { where: { id: { in: string[] }; businessId: string } }) =>
+          Promise.resolve(
+            state.catalog.filter(
+              (row) =>
+                args.where.id.in.includes(row.id) &&
+                row.businessId === args.where.businessId,
+            ).length,
+          ),
+      ),
+    },
     employee: {
+      create: vi.fn(
+        (args: {
+          data: {
+            businessId: string;
+            name: string;
+            services?: { create: { serviceId: string }[] };
+          };
+        }) => {
+          const employee = {
+            id: `emp-${state.employees.length + 1}`,
+            businessId: args.data.businessId,
+            name: args.data.name,
+          };
+
+          state.employees.push(employee);
+          state.services.push(
+            ...(args.data.services?.create ?? []).map((row) => ({
+              employeeId: employee.id,
+              serviceId: row.serviceId,
+            })),
+          );
+
+          return Promise.resolve({ ...employee, services: [], hours: [] });
+        },
+      ),
       findFirst: vi.fn((args: { where: ScopedWhere }) => {
         const employee = findEmployee(args.where);
 
@@ -122,6 +165,11 @@ const db = vi.hoisted(() => {
       state.employees = employees.map((row) => ({ ...row }));
       state.services = services.map((row) => ({ ...row }));
       state.hours = [];
+      state.catalog = [
+        { id: SERVICE_OF_A, businessId: TENANT_A },
+        { id: SERVICE_OF_B, businessId: TENANT_B },
+        { id: OTHER_SERVICE_OF_B, businessId: TENANT_B },
+      ];
     },
     prisma: {
       ...client,
@@ -150,7 +198,7 @@ vi.mock("../../shared/database/prisma", () => ({ prisma: db.prisma }));
 beforeEach(() => {
   db.seed(
     [{ id: EMPLOYEE_OF_B, businessId: TENANT_B, name: "Funcionário do B" }],
-    [{ employeeId: EMPLOYEE_OF_B, serviceId: "svc-do-b" }],
+    [{ employeeId: EMPLOYEE_OF_B, serviceId: SERVICE_OF_B }],
   );
 });
 
@@ -187,21 +235,91 @@ describe("employeeRepository — escopo de tenant nas escritas", () => {
 
   it("substitui os serviços do funcionário do próprio tenant", async () => {
     const employee = await runWithTenant(TENANT_B, () =>
-      employeeRepository.setServices(EMPLOYEE_OF_B, ["svc-novo"]),
+      employeeRepository.setServices(EMPLOYEE_OF_B, [OTHER_SERVICE_OF_B]),
     );
 
-    expect(employee.services).toEqual([{ serviceId: "svc-novo" }]);
+    expect(employee.services).toEqual([{ serviceId: OTHER_SERVICE_OF_B }]);
   });
 
   it("não toca nos serviços de funcionário de outro tenant e responde 404", async () => {
     const attempt = runWithTenant(TENANT_A, () =>
-      employeeRepository.setServices(EMPLOYEE_OF_B, ["svc-invasor"]),
+      employeeRepository.setServices(EMPLOYEE_OF_B, [SERVICE_OF_A]),
     );
 
     await expect(attempt).rejects.toMatchObject({ statusCode: 404 });
     expect(db.state.services).toEqual([
-      { employeeId: EMPLOYEE_OF_B, serviceId: "svc-do-b" },
+      { employeeId: EMPLOYEE_OF_B, serviceId: SERVICE_OF_B },
     ]);
+  });
+
+  it("não liga o funcionário a serviço de outro tenant e mantém os vínculos", async () => {
+    const attempt = runWithTenant(TENANT_B, () =>
+      employeeRepository.setServices(EMPLOYEE_OF_B, [
+        OTHER_SERVICE_OF_B,
+        SERVICE_OF_A,
+      ]),
+    );
+
+    await expect(attempt).rejects.toMatchObject({
+      statusCode: 404,
+      message: "Serviço não encontrado",
+    });
+    expect(db.state.services).toEqual([
+      { employeeId: EMPLOYEE_OF_B, serviceId: SERVICE_OF_B },
+    ]);
+  });
+
+  it("valida o dono dos serviços dentro da transação da escrita", async () => {
+    await runWithTenant(TENANT_B, () =>
+      employeeRepository.setServices(EMPLOYEE_OF_B, [OTHER_SERVICE_OF_B]),
+    );
+
+    expect(db.prisma.service.count).toHaveBeenCalledWith({
+      where: { id: { in: [OTHER_SERVICE_OF_B] }, businessId: TENANT_B },
+    });
+  });
+
+  it("aceita serviço repetido na lista sem acusar serviço alheio", async () => {
+    const employee = await runWithTenant(TENANT_B, () =>
+      employeeRepository.setServices(EMPLOYEE_OF_B, [
+        OTHER_SERVICE_OF_B,
+        OTHER_SERVICE_OF_B,
+      ]),
+    );
+
+    expect(employee.services).toEqual([{ serviceId: OTHER_SERVICE_OF_B }]);
+  });
+
+  it("cria funcionário com serviços do próprio tenant", async () => {
+    await runWithTenant(TENANT_B, () =>
+      employeeRepository.create({
+        name: "Novo",
+        active: true,
+        serviceIds: [SERVICE_OF_B],
+      }),
+    );
+
+    expect(db.state.employees).toHaveLength(2);
+    expect(db.state.services).toContainEqual({
+      employeeId: "emp-2",
+      serviceId: SERVICE_OF_B,
+    });
+  });
+
+  it("não cria funcionário ligado a serviço de outro tenant", async () => {
+    const attempt = runWithTenant(TENANT_B, () =>
+      employeeRepository.create({
+        name: "Invasor",
+        active: true,
+        serviceIds: [SERVICE_OF_A],
+      }),
+    );
+
+    await expect(attempt).rejects.toMatchObject({
+      statusCode: 404,
+      message: "Serviço não encontrado",
+    });
+    expect(db.state.employees).toHaveLength(1);
   });
 
   it("não toca na jornada de funcionário de outro tenant e responde 404", async () => {

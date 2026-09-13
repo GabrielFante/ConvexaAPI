@@ -50,6 +50,28 @@ async function assertOwned(
   }
 }
 
+async function ownedServiceIds(
+  tx: Prisma.TransactionClient,
+  serviceIds: string[],
+  businessId: string,
+): Promise<string[]> {
+  const unique = [...new Set(serviceIds)];
+
+  if (!unique.length) {
+    return unique;
+  }
+
+  const owned = await tx.service.count({
+    where: { id: { in: unique }, businessId },
+  });
+
+  if (owned !== unique.length) {
+    throw new AppError("Serviço não encontrado", 404);
+  }
+
+  return unique;
+}
+
 async function findScopedOrFail(id: string) {
   const employee = await findScoped(id);
 
@@ -82,17 +104,27 @@ export const employeeRepository = {
   },
 
   create(data: CreateEmployeeInput) {
-    return prisma.employee.create({
-      data: {
-        businessId: getBusinessId(),
-        name: data.name,
-        active: data.active,
-        services: data.serviceIds?.length
-          ? { create: data.serviceIds.map((serviceId) => ({ serviceId })) }
-          : undefined,
-        hours: data.hours?.length ? { create: data.hours } : undefined,
-      },
-      select: employeeFields,
+    const businessId = getBusinessId();
+
+    return prisma.$transaction(async (tx) => {
+      const serviceIds = await ownedServiceIds(
+        tx,
+        data.serviceIds ?? [],
+        businessId,
+      );
+
+      return tx.employee.create({
+        data: {
+          businessId,
+          name: data.name,
+          active: data.active,
+          services: serviceIds.length
+            ? { create: serviceIds.map((serviceId) => ({ serviceId })) }
+            : undefined,
+          hours: data.hours?.length ? { create: data.hours } : undefined,
+        },
+        select: employeeFields,
+      });
     });
   },
 
@@ -123,12 +155,13 @@ export const employeeRepository = {
     const businessId = getBusinessId();
     await prisma.$transaction(async (tx) => {
       await assertOwned(tx, id, businessId);
+      const owned = await ownedServiceIds(tx, serviceIds, businessId);
       await tx.employeeService.deleteMany({
         where: { employeeId: id, employee: { businessId } },
       });
-      if (serviceIds.length) {
+      if (owned.length) {
         await tx.employeeService.createMany({
-          data: serviceIds.map((serviceId) => ({ employeeId: id, serviceId })),
+          data: owned.map((serviceId) => ({ employeeId: id, serviceId })),
         });
       }
     });

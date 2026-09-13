@@ -1,6 +1,5 @@
 import { AppError } from "../../shared/errors/AppError";
 import { buildPage, type Pagination } from "../../shared/validation/pagination";
-import { serviceService } from "../service/service.service";
 import { employeeRepository } from "./employee.repository";
 import type {
   CreateEmployeeInput,
@@ -18,12 +17,6 @@ async function getOwnedOrFail(id: string) {
   return employee;
 }
 
-async function assertServicesOwned(serviceIds: string[]) {
-  await Promise.all(
-    serviceIds.map((serviceId) => serviceService.get(serviceId)),
-  );
-}
-
 export const employeeService = {
   async list(pagination: Pagination) {
     const { data, total } = await employeeRepository.list(pagination);
@@ -34,10 +27,7 @@ export const employeeService = {
     return getOwnedOrFail(id);
   },
 
-  async create(data: CreateEmployeeInput) {
-    if (data.serviceIds?.length) {
-      await assertServicesOwned(data.serviceIds);
-    }
+  create(data: CreateEmployeeInput) {
     return employeeRepository.create(data);
   },
 
@@ -48,7 +38,6 @@ export const employeeService = {
 
   async setServices(id: string, serviceIds: string[]) {
     await getOwnedOrFail(id);
-    await assertServicesOwned(serviceIds);
     return employeeRepository.setServices(id, serviceIds);
   },
 
