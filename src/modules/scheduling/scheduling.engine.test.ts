@@ -82,7 +82,6 @@ function appointment(
 ): FoundAppointment {
   return {
     id: "appt-1",
-    businessId: BUSINESS_ID,
     customerId: customer.id,
     employeeId: employee.id,
     serviceId: service.id,
@@ -519,5 +518,98 @@ describe("schedulingEngine.getAvailability", () => {
         date: "11/08/2026",
       }),
     ).rejects.toBeInstanceOf(AppError);
+  });
+});
+
+describe("schedulingEngine.getAvailability — corte por limit", () => {
+  it("devolve o dia inteiro quando o limit nao e informado", async () => {
+    const result = await schedulingEngine.getAvailability({
+      serviceId: service.id,
+      date: "2026-08-11",
+    });
+
+    expect(result.slots).toHaveLength(17);
+    expect(result.totalSlots).toBe(17);
+  });
+
+  it("corta nos primeiros horarios distintos e preserva o total", async () => {
+    const result = await schedulingEngine.getAvailability({
+      serviceId: service.id,
+      date: "2026-08-11",
+      limit: 3,
+    });
+
+    expect(result.totalSlots).toBe(17);
+    expect(result.slots.map((slot) => slot.startAt)).toEqual([
+      at(9),
+      at(9, 30),
+      at(10),
+    ]);
+  });
+
+  it("mantem todos os funcionarios livres nos horarios que sobreviveram ao corte", async () => {
+    repository.listEligibleEmployees.mockResolvedValue([
+      { id: "emp-2", hours: [] },
+      { id: "emp-1", hours: [] },
+    ]);
+
+    const result = await schedulingEngine.getAvailability({
+      serviceId: service.id,
+      date: "2026-08-11",
+      limit: 2,
+    });
+
+    expect(
+      new Set(result.slots.map((slot) => slot.startAt.getTime())).size,
+    ).toBe(2);
+    expect(result.slots).toHaveLength(4);
+    expect(result.slots.map((slot) => slot.employeeId)).toEqual([
+      "emp-1",
+      "emp-2",
+      "emp-1",
+      "emp-2",
+    ]);
+    expect(result.totalSlots).toBe(34);
+  });
+
+  it("devolve os slots ordenados por horario mesmo com varios funcionarios", async () => {
+    repository.listEligibleEmployees.mockResolvedValue([
+      { id: "emp-2", hours: [] },
+      { id: "emp-1", hours: [] },
+    ]);
+
+    const result = await schedulingEngine.getAvailability({
+      serviceId: service.id,
+      date: "2026-08-11",
+      limit: 100,
+    });
+
+    const horarios = result.slots.map((slot) => slot.startAt.getTime());
+
+    expect(horarios).toEqual([...horarios].sort((a, b) => a - b));
+  });
+
+  it("devolve o dia inteiro quando o limit cobre todos os horarios", async () => {
+    const result = await schedulingEngine.getAvailability({
+      serviceId: service.id,
+      date: "2026-08-11",
+      limit: 100,
+    });
+
+    expect(result.slots).toHaveLength(result.totalSlots);
+    expect(result.totalSlots).toBe(17);
+  });
+
+  it("zera o total quando nenhum funcionario realiza o servico", async () => {
+    repository.listEligibleEmployees.mockResolvedValue([]);
+
+    const result = await schedulingEngine.getAvailability({
+      serviceId: service.id,
+      date: "2026-08-11",
+      limit: 3,
+    });
+
+    expect(result.slots).toEqual([]);
+    expect(result.totalSlots).toBe(0);
   });
 });

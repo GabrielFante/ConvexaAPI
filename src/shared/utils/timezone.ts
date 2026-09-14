@@ -93,6 +93,14 @@ export function getCalendarDay(date: Date, timezone: string): CalendarDay {
   return { year, month, day };
 }
 
+// Converte hora de parede do tenant em instante UTC em dois passos.
+// 1) Trata a hora de parede como se fosse UTC e mede o offset do fuso nesse
+//    instante: é só um palpite, porque o offset certo é o do instante real.
+// 2) Mede o offset de novo no palpite corrigido. Se uma transição de horário
+//    de verão ficou entre os dois instantes, o segundo offset é o que vale.
+// Hora inexistente (início do horário de verão) recebe o offset posterior à
+// transição e cai uma hora antes; hora repetida (fim) fica com a primeira
+// ocorrência.
 export function zonedDayToUtc(
   day: CalendarDay,
   minuteOfDay: number,

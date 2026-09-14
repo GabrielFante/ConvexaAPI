@@ -14,7 +14,7 @@ Para habilitar recuperação: grupo deve informar domínio/URL do frontend com `
 
 PostgreSQL 16, volume persistente postgres_data, sem porta pública. Role convexa não é superuser, mas é dona das tabelas/migrations. RLS habilitado nas migrations, sem políticas e sem FORCE RLS, não garante isolamento para o proprietário. Isolamento atual depende dos filtros da aplicação; não afirmar isolamento adicional no banco.
 
-Migrations executadas antes de iniciar a API; falha impede subida. Uma réplica. API 512 MiB/1 CPU, banco 768 MiB/1 CPU. Healthcheck `/health` verifica processo, não banco; validar login e consulta após cada deploy.
+Migrations executadas pelo serviço temporário `migrate` antes de iniciar a API; falha impede subida. Uma réplica. API 512 MiB/1 CPU, banco 768 MiB/1 CPU; migrate 512 MiB/1 CPU. PostgreSQL configurado explicitamente com timezone=UTC. Healthcheck `/health/ready` verifica acesso ao banco; `/health` e `/health/live` verificam processo.
 
 ## Testes
 
@@ -35,5 +35,9 @@ Payload de cadastro (substituir os exemplos):
 Cadastro retorna accessToken e refreshToken: não compartilhar/publicar. Rota `/internal` exige INTERNAL_API_KEY, nunca colocar essa chave no frontend. Nenhuma integração Meta/WhatsApp/IA foi provisionada.
 
 ## Atualizações
+
+Em 14/09/2026: integradas as alterações de main até 77240cd. Build e 425 testes passaram. Teste Compose validou migrations, login, isolamento e persistência após recriação. A nova migration de timestamps usa BEGIN/COMMIT explícitos. Listagens paginadas agora retornam `{data, meta}` (page/perPage); o futuro frontend deve consumir esse contrato.
+
+Auditoria npm atual: 4 alertas altos na cadeia Prisma/config/deepmerge-ts/mysql2, inclusive no grafo omit=dev. Não confundir separar o serviço migrate com eliminar esses pacotes: o npm ainda pode mantê-los como dependências peer. Não foi validada exploração. A API usa PostgreSQL, não MySQL. Mantido piloto somente com dados fictícios, sem frontend e sem e-mails.
 
 Corrigir por PR, integrar mudanças aprovadas à branch piloto e executar Deploy manual. Alteração só em main não publica. Fazer backup consistente antes de migrations/atualização, registrar commit e testar recuperação. Não usar Fresh Volumes/down -v no servidor. Rollback de código não desfaz migration. Backups automáticos/restauração ainda não configurados.

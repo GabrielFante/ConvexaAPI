@@ -1,3 +1,18 @@
+/// Objetos que existem apenas em SQL — o Prisma nao os modela.
+/// Ver prisma/migrations/20260908120000_timestamptz_defaults_indexes_and_checks:
+///   - EXCLUDE USING gist "Appointment_employee_no_overlap"
+///     (tstzrange, '[)', WHERE status <> 'CANCELLED')
+///   - CHECK: dayOfWeek 0-6; minutos 0-1440; opensAt < closesAt;
+///     startsAt < endsAt; startDate <= endDate; startAt < endAt;
+///     priceCents >= 0; durationMinutes > 0
+///   - RLS habilitado sem politicas (20260615013847_enable_rls): bloqueia a
+///     anon key do Supabase; NAO isola tenant — isso e feito na aplicacao.
+///
+/// PRE-REQUISITO DE RUNTIME: a sessao do banco precisa estar em TimeZone UTC.
+/// O @prisma/adapter-pg escreve literais timestamptz sem offset e, na leitura,
+/// troca o offset por +00:00 sem converter. Fora de UTC, todo instante desloca.
+/// A guarda esta em src/shared/database/prisma.ts.
+
 generator client {
   provider = "prisma-client-js"
 }
@@ -19,7 +34,7 @@ enum UserRole {
 }
 
 model Business {
-  id                  String   @id @default(uuid()) @db.Uuid
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                String
   slug                String   @unique
   timezone            String   @default("America/Sao_Paulo")
@@ -31,8 +46,8 @@ model Business {
   aiSystemPrompt      String?
   slotIntervalMinutes Int      @default(15)
   bufferMinutes       Int      @default(0)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  createdAt           DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt           DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   hours        BusinessHours[]
   closedDays   ClosedDay[]
@@ -46,7 +61,7 @@ model Business {
 }
 
 model BusinessHours {
-  id         String   @id @default(uuid()) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   businessId String   @db.Uuid
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   dayOfWeek  Int
@@ -56,19 +71,26 @@ model BusinessHours {
   @@index([businessId, dayOfWeek])
 }
 
+/// date, startDate e endDate sao DIAS DE CALENDARIO e continuam @db.Date de
+/// proposito — nao viram timestamptz. O Engine compara getTime() por igualdade
+/// exata contra Date.UTC(y, m-1, d) em availability.ts (isClosedDay/coversDay).
+/// DATE e imune ao TimeZone da sessao nos dois sentidos; timestamptz nao e.
 model ClosedDay {
-  id         String   @id @default(uuid()) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   businessId String   @db.Uuid
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   date       DateTime @db.Date
   reason     String?
 
   @@unique([businessId, date])
-  @@index([businessId])
 }
 
+/// date, startDate e endDate sao DIAS DE CALENDARIO e continuam @db.Date de
+/// proposito — nao viram timestamptz. O Engine compara getTime() por igualdade
+/// exata contra Date.UTC(y, m-1, d) em availability.ts (isClosedDay/coversDay).
+/// DATE e imune ao TimeZone da sessao nos dois sentidos; timestamptz nao e.
 model Vacation {
-  id         String    @id @default(uuid()) @db.Uuid
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   businessId String    @db.Uuid
   business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   employeeId String?   @db.Uuid
@@ -82,13 +104,13 @@ model Vacation {
 }
 
 model TimeBlock {
-  id         String    @id @default(uuid()) @db.Uuid
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   businessId String    @db.Uuid
   business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
   employeeId String?   @db.Uuid
   employee   Employee? @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  startAt    DateTime
-  endAt      DateTime
+  startAt    DateTime  @db.Timestamptz(3)
+  endAt      DateTime  @db.Timestamptz(3)
   reason     String?
 
   @@index([businessId])
@@ -96,30 +118,30 @@ model TimeBlock {
 }
 
 model Service {
-  id              String   @id @default(uuid()) @db.Uuid
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   businessId      String   @db.Uuid
   business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   name            String
   durationMinutes Int
   priceCents      Int
   active          Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   employees    EmployeeService[]
   appointments Appointment[]
 
-  @@index([businessId])
+  @@index([businessId, createdAt])
 }
 
 model Employee {
-  id         String   @id @default(uuid()) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   businessId String   @db.Uuid
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   name       String
   active     Boolean  @default(true)
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   services     EmployeeService[]
   hours        EmployeeHours[]
@@ -127,7 +149,7 @@ model Employee {
   timeBlocks   TimeBlock[]
   appointments Appointment[]
 
-  @@index([businessId])
+  @@index([businessId, createdAt])
 }
 
 model EmployeeService {
@@ -141,7 +163,7 @@ model EmployeeService {
 }
 
 model EmployeeHours {
-  id         String   @id @default(uuid()) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   employeeId String   @db.Uuid
   employee   Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
   dayOfWeek  Int
@@ -152,23 +174,23 @@ model EmployeeHours {
 }
 
 model Customer {
-  id         String   @id @default(uuid()) @db.Uuid
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   businessId String   @db.Uuid
   business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   name       String
   phone      String
   notes      String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt  DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   appointments Appointment[]
 
   @@unique([businessId, phone])
-  @@index([businessId])
+  @@index([businessId, createdAt])
 }
 
 model Appointment {
-  id              String            @id @default(uuid()) @db.Uuid
+  id              String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   businessId      String            @db.Uuid
   business        Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
   customerId      String            @db.Uuid
@@ -177,22 +199,21 @@ model Appointment {
   employee        Employee          @relation(fields: [employeeId], references: [id])
   serviceId       String            @db.Uuid
   service         Service           @relation(fields: [serviceId], references: [id])
-  startAt         DateTime
-  endAt           DateTime
+  startAt         DateTime          @db.Timestamptz(3)
+  endAt           DateTime          @db.Timestamptz(3)
   status          AppointmentStatus @default(SCHEDULED)
   priceCents      Int
   durationMinutes Int
   notes           String?
-  createdAt       DateTime          @default(now())
-  updatedAt       DateTime          @updatedAt
+  createdAt       DateTime          @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime          @default(now()) @updatedAt @db.Timestamptz(3)
 
-  @@index([businessId])
   @@index([businessId, employeeId, startAt])
   @@index([businessId, customerId])
 }
 
 model User {
-  id           String   @id @default(uuid()) @db.Uuid
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   businessId   String   @db.Uuid
   business     Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   name         String
@@ -200,8 +221,8 @@ model User {
   passwordHash String
   role         UserRole @default(OWNER)
   active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt    DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
   refreshTokens       RefreshToken[]
   passwordResetTokens PasswordResetToken[]
@@ -210,27 +231,27 @@ model User {
 }
 
 model RefreshToken {
-  id         String    @id @default(uuid()) @db.Uuid
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId     String    @db.Uuid
   user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   businessId String    @db.Uuid
   tokenHash  String    @unique
-  expiresAt  DateTime
-  revokedAt  DateTime?
-  createdAt  DateTime  @default(now())
+  expiresAt  DateTime  @db.Timestamptz(3)
+  revokedAt  DateTime? @db.Timestamptz(3)
+  createdAt  DateTime  @default(now()) @db.Timestamptz(3)
 
   @@index([userId])
   @@index([businessId])
 }
 
 model PasswordResetToken {
-  id        String    @id @default(uuid()) @db.Uuid
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   userId    String    @db.Uuid
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   tokenHash String    @unique
-  expiresAt DateTime
-  usedAt    DateTime?
-  createdAt DateTime  @default(now())
+  expiresAt DateTime  @db.Timestamptz(3)
+  usedAt    DateTime? @db.Timestamptz(3)
+  createdAt DateTime  @default(now()) @db.Timestamptz(3)
 
   @@index([userId])
 }

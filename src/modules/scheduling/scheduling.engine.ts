@@ -66,12 +66,14 @@ export type AvailabilityQuery = {
   date: string;
   employeeId?: string;
   slotIntervalMinutes?: number;
+  limit?: number;
 };
 
 export type AvailabilityResult = {
   date: string;
   serviceId: string;
   durationMinutes: number;
+  totalSlots: number;
   slots: AvailabilitySlot[];
 };
 
@@ -211,6 +213,35 @@ function assertBookable(
   }
 }
 
+function byStartThenEmployee(a: AvailabilitySlot, b: AvailabilitySlot): number {
+  return (
+    a.startAt.getTime() - b.startAt.getTime() ||
+    a.employeeId.localeCompare(b.employeeId)
+  );
+}
+
+function firstDistinctStarts(
+  slots: AvailabilitySlot[],
+  limit: number,
+): AvailabilitySlot[] {
+  const kept = new Set<number>();
+
+  return slots.filter((slot) => {
+    const start = slot.startAt.getTime();
+
+    if (kept.has(start)) {
+      return true;
+    }
+
+    if (kept.size >= limit) {
+      return false;
+    }
+
+    kept.add(start);
+    return true;
+  });
+}
+
 export const schedulingEngine = {
   async getAvailability(query: AvailabilityQuery): Promise<AvailabilityResult> {
     const service = await loadActiveService(query.serviceId);
@@ -224,6 +255,7 @@ export const schedulingEngine = {
       date: formatCalendarDay(day),
       serviceId: service.id,
       durationMinutes: service.durationMinutes,
+      totalSlots: 0,
       slots: [],
     };
 
@@ -240,7 +272,13 @@ export const schedulingEngine = {
       slotIntervalMinutes: query.slotIntervalMinutes,
     });
 
-    result.slots = computeAvailability(context);
+    const slots = computeAvailability(context).sort(byStartThenEmployee);
+
+    result.totalSlots = slots.length;
+    result.slots =
+      query.limit === undefined
+        ? slots
+        : firstDistinctStarts(slots, query.limit);
 
     return result;
   },

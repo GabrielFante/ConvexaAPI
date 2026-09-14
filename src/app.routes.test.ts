@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import request from "supertest";
 import { bearer, OWNER_B, STAFF_A, TENANT_A, TENANT_B } from "./test/http";
+import { app } from "./app";
 
 const CUSTOMER_OF_A = "cccccccc-1111-4111-8111-111111111111";
 const CUSTOMER_OF_B = "cccccccc-2222-4222-8222-222222222222";
 const APPOINTMENT_OF_A = "dddddddd-1111-4111-8111-111111111111";
 const APPOINTMENT_OF_B = "dddddddd-2222-4222-8222-222222222222";
 const CANCELLED_OF_A = "dddddddd-3333-4333-8333-333333333333";
+const TIME_BLOCK_OF_A = "eeeeeeee-1111-4111-8111-111111111111";
+const TIME_BLOCK_OF_B = "eeeeeeee-2222-4222-8222-222222222222";
 
 const db = vi.hoisted(() => {
   type Row = Record<string, unknown> & { id: string; businessId: string };
@@ -41,6 +44,25 @@ const db = vi.hoisted(() => {
       id: "dddddddd-3333-4333-8333-333333333333",
       businessId: "11111111-1111-4111-8111-111111111111",
       status: "CANCELLED",
+    },
+  ];
+
+  const initialTimeBlocks: Row[] = [
+    {
+      id: "eeeeeeee-1111-4111-8111-111111111111",
+      businessId: "11111111-1111-4111-8111-111111111111",
+      employeeId: null,
+      startAt: new Date("2026-12-25T13:00:00.000Z"),
+      endAt: new Date("2026-12-25T15:00:00.000Z"),
+      reason: "Feriado do tenant A",
+    },
+    {
+      id: "eeeeeeee-2222-4222-8222-222222222222",
+      businessId: "22222222-2222-4222-8222-222222222222",
+      employeeId: null,
+      startAt: new Date("2026-12-25T13:00:00.000Z"),
+      endAt: new Date("2026-12-25T15:00:00.000Z"),
+      reason: "Feriado do tenant B",
     },
   ];
 
@@ -83,6 +105,7 @@ const db = vi.hoisted(() => {
 
   let customers: Row[] = [];
   let appointments: Row[] = [];
+  let timeBlocks: Row[] = [];
 
   const matches = (row: Row, where: Record<string, unknown>) =>
     Object.entries(where).every(([field, value]) => row[field] === value);
@@ -106,12 +129,22 @@ const db = vi.hoisted(() => {
   };
 
   const collection = (rows: () => Row[], write: (next: Row[]) => void) => ({
-    findMany: vi.fn((args: { where: Record<string, unknown> }) =>
-      Promise.resolve(
-        rows()
-          .filter((row) => matches(row, args.where))
-          .map((row) => ({ ...row })),
-      ),
+    findMany: vi.fn(
+      (args: {
+        where: Record<string, unknown>;
+        select?: Record<string, unknown>;
+        skip?: number;
+        take?: number;
+      }) => {
+        const found = rows().filter((row) => matches(row, args.where));
+        const skip = args.skip ?? 0;
+        const page =
+          args.take === undefined ? found : found.slice(skip, skip + args.take);
+        return Promise.resolve(page.map((row) => project(row, args.select)));
+      },
+    ),
+    count: vi.fn((args: { where: Record<string, unknown> }) =>
+      Promise.resolve(rows().filter((row) => matches(row, args.where)).length),
     ),
     findFirst: vi.fn(
       (args: {
@@ -144,8 +177,10 @@ const db = vi.hoisted(() => {
     reset() {
       customers = initialCustomers.map((row) => ({ ...row }));
       appointments = initialAppointments.map((row) => ({ ...row }));
+      timeBlocks = initialTimeBlocks.map((row) => ({ ...row }));
     },
     customers: () => customers,
+    timeBlocks: () => timeBlocks,
     prisma: {
       customer: collection(
         () => customers,
@@ -158,6 +193,17 @@ const db = vi.hoisted(() => {
         (next) => {
           appointments = next;
         },
+      ),
+      timeBlock: collection(
+        () => timeBlocks,
+        (next) => {
+          timeBlocks = next;
+        },
+      ),
+      $transaction: vi.fn((operations: unknown) =>
+        Array.isArray(operations)
+          ? Promise.all(operations)
+          : Promise.resolve(operations),
       ),
       business: {
         findFirst: vi.fn(
@@ -178,8 +224,6 @@ const db = vi.hoisted(() => {
 });
 
 vi.mock("./shared/database/prisma", () => ({ prisma: db.prisma }));
-
-const { app } = await import("./app");
 
 beforeEach(() => {
   db.reset();
@@ -218,8 +262,14 @@ describe("isolamento entre tenants por HTTP", () => {
       .set("authorization", bearer());
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveLength(1);
-    expect(response.body[0].id).toBe(CUSTOMER_OF_A);
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.data[0].id).toBe(CUSTOMER_OF_A);
+    expect(response.body.meta).toEqual({
+      page: 1,
+      perPage: 20,
+      total: 1,
+      totalPages: 1,
+    });
   });
 
   it("nao le cliente de outro tenant", async () => {
@@ -260,6 +310,55 @@ describe("isolamento entre tenants por HTTP", () => {
     expect(response.body.code).toBe("APPOINTMENT_NOT_FOUND");
   });
 
+  it("nao le bloqueio de outro tenant", async () => {
+    const response = await request(app)
+      .get(`/api/time-blocks/${TIME_BLOCK_OF_B}`)
+      .set("authorization", bearer());
+
+    expect(response.status).toBe(404);
+  });
+
+  it("le o proprio bloqueio sem devolver o businessId", async () => {
+    const response = await request(app)
+      .get(`/api/time-blocks/${TIME_BLOCK_OF_A}`)
+      .set("authorization", bearer());
+
+    expect(response.status).toBe(200);
+    expect(response.body.id).toBe(TIME_BLOCK_OF_A);
+    expect(response.body).not.toHaveProperty("businessId");
+  });
+
+  it("nao edita bloqueio de outro tenant", async () => {
+    const response = await request(app)
+      .patch(`/api/time-blocks/${TIME_BLOCK_OF_B}`)
+      .set("authorization", bearer())
+      .send({ reason: "Invadido" });
+
+    expect(response.status).toBe(404);
+
+    const untouched = db.timeBlocks().find((row) => row.id === TIME_BLOCK_OF_B);
+    expect(untouched?.reason).toBe("Feriado do tenant B");
+  });
+
+  it("edita o proprio bloqueio", async () => {
+    const response = await request(app)
+      .patch(`/api/time-blocks/${TIME_BLOCK_OF_A}`)
+      .set("authorization", bearer())
+      .send({ reason: "Dentista" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.reason).toBe("Dentista");
+  });
+
+  it("recusa update que inverte o intervalo ja gravado", async () => {
+    const response = await request(app)
+      .patch(`/api/time-blocks/${TIME_BLOCK_OF_A}`)
+      .set("authorization", bearer())
+      .send({ startAt: "2026-12-25T16:00:00.000Z" });
+
+    expect(response.status).toBe(400);
+  });
+
   it("ignora o header x-business-id apontando para outro tenant", async () => {
     const response = await request(app)
       .get("/api/customers")
@@ -267,8 +366,8 @@ describe("isolamento entre tenants por HTTP", () => {
       .set("x-business-id", TENANT_B);
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveLength(1);
-    expect(response.body[0].id).toBe(CUSTOMER_OF_A);
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.data[0].id).toBe(CUSTOMER_OF_A);
   });
 
   it("o token do tenant B enxerga apenas os dados do tenant B", async () => {
@@ -277,8 +376,8 @@ describe("isolamento entre tenants por HTTP", () => {
       .set("authorization", bearer({ userId: OWNER_B, businessId: TENANT_B }));
 
     expect(response.status).toBe(200);
-    expect(response.body).toHaveLength(1);
-    expect(response.body[0].id).toBe(CUSTOMER_OF_B);
+    expect(response.body.data).toHaveLength(1);
+    expect(response.body.data[0].id).toBe(CUSTOMER_OF_B);
   });
 });
 
@@ -343,5 +442,71 @@ describe("codigos de erro legiveis por maquina", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("CANCELLED");
+  });
+});
+
+describe("cabecalhos de seguranca e limite de payload", () => {
+  it("aplica os cabecalhos do helmet nas respostas", async () => {
+    const response = await request(app)
+      .get("/api/customers")
+      .set("authorization", bearer());
+
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+    expect(response.headers["x-frame-options"]).toBe("SAMEORIGIN");
+    expect(response.headers["x-powered-by"]).toBeUndefined();
+  });
+
+  it("aplica os cabecalhos do helmet tambem no health check", async () => {
+    const response = await request(app).get("/health");
+
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+  });
+
+  it("recusa corpo acima do limite com 413, nao 500", async () => {
+    const response = await request(app)
+      .post("/api/customers")
+      .set("authorization", bearer())
+      .set("content-type", "application/json")
+      .send(
+        JSON.stringify({ name: "a".repeat(200_000), phone: "5511900000003" }),
+      );
+
+    expect(response.status).toBe(413);
+    expect(response.body.code).toBe("PAYLOAD_TOO_LARGE");
+  });
+});
+
+describe("paginacao nas listagens", () => {
+  it("aceita page e perPage na query string", async () => {
+    const response = await request(app)
+      .get("/api/customers?page=2&perPage=1")
+      .set("authorization", bearer());
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toHaveLength(0);
+    expect(response.body.meta).toEqual({
+      page: 2,
+      perPage: 1,
+      total: 1,
+      totalPages: 1,
+    });
+  });
+
+  it("recusa perPage acima do maximo com 400 e code de validacao", async () => {
+    const response = await request(app)
+      .get("/api/customers?perPage=500")
+      .set("authorization", bearer());
+
+    expect(response.status).toBe(400);
+    expect(response.body.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("conta apenas os registros do proprio tenant", async () => {
+    const response = await request(app)
+      .get("/api/customers")
+      .set("authorization", bearer({ userId: OWNER_B, businessId: TENANT_B }));
+
+    expect(response.body.meta.total).toBe(1);
+    expect(response.body.data[0].id).toBe(CUSTOMER_OF_B);
   });
 });

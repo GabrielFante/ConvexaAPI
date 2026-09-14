@@ -11,6 +11,86 @@ const originList = z
       .filter((origin) => origin.length > 0),
   );
 
+const SECRET_PLACEHOLDER_WORDS = [
+  "troque",
+  "changeme",
+  "secret",
+  "senha",
+  "password",
+  "teste",
+  "exemplo",
+  "example",
+  "convexa",
+];
+
+const MIN_DISTINCT_SECRET_CHARS = 12;
+
+const SECRET_NAMES = ["JWT_SECRET", "INTERNAL_API_KEY"] as const;
+
+function weakSecretMessage(name: string, value: string): string | undefined {
+  const normalized = value.toLowerCase();
+
+  if (SECRET_PLACEHOLDER_WORDS.some((word) => normalized.includes(word))) {
+    return `${name} parece um valor de exemplo; gere um segredo aleatório`;
+  }
+
+  if (new Set(value).size < MIN_DISTINCT_SECRET_CHARS) {
+    return `${name} tem pouca variedade de caracteres; gere um segredo aleatório`;
+  }
+
+  return undefined;
+}
+
+const MAIL_DRIVERS = ["resend", "console"] as const;
+
+type MailConfig = {
+  PASSWORD_RESET_ENABLED: boolean;
+  NODE_ENV: "development" | "production" | "test";
+  RESEND_API_KEY?: string;
+  MAIL_DRIVER?: (typeof MAIL_DRIVERS)[number];
+};
+
+function mailConfigIssue(
+  data: MailConfig,
+): { path: string[]; message: string } | undefined {
+  if (data.NODE_ENV === "production" && data.MAIL_DRIVER === "console") {
+    return {
+      path: ["MAIL_DRIVER"],
+      message: "MAIL_DRIVER=console não é permitido quando NODE_ENV=production",
+    };
+  }
+
+  if (!data.PASSWORD_RESET_ENABLED && !data.MAIL_DRIVER) return undefined;
+
+  if (data.RESEND_API_KEY || data.MAIL_DRIVER === "console") {
+    return undefined;
+  }
+
+  if (data.MAIL_DRIVER === "resend") {
+    return {
+      path: ["RESEND_API_KEY"],
+      message: "RESEND_API_KEY é obrigatória quando MAIL_DRIVER=resend",
+    };
+  }
+
+  if (data.NODE_ENV === "test") {
+    return undefined;
+  }
+
+  if (data.NODE_ENV === "production") {
+    return {
+      path: ["RESEND_API_KEY"],
+      message: "RESEND_API_KEY é obrigatória quando NODE_ENV=production",
+    };
+  }
+
+  return {
+    path: ["RESEND_API_KEY"],
+    message:
+      "RESEND_API_KEY é obrigatória; para desenvolvimento local defina MAIL_DRIVER=console",
+  };
+}
+
 export const envSchema = z
   .object({
     DATABASE_URL: z.url("DATABASE_URL deve ser uma URL de conexão válida"),
@@ -39,6 +119,9 @@ export const envSchema = z
       .default("true")
       .transform((value) => value === "true"),
     RESEND_API_KEY: z.string().trim().min(1).optional(),
+    MAIL_DRIVER: z
+      .enum(MAIL_DRIVERS, "MAIL_DRIVER deve ser resend ou console")
+      .optional(),
     MAIL_FROM: z
       .string()
       .trim()
@@ -46,6 +129,12 @@ export const envSchema = z
       .default("Convexa <onboarding@resend.dev>"),
   })
   .superRefine((data, ctx) => {
+    const mailIssue = mailConfigIssue(data);
+
+    if (mailIssue) {
+      ctx.addIssue({ code: "custom", ...mailIssue });
+    }
+
     if (data.NODE_ENV !== "production") {
       return;
     }
@@ -58,11 +147,19 @@ export const envSchema = z
       });
     }
 
-    if (data.PASSWORD_RESET_ENABLED && !data.RESEND_API_KEY) {
+    for (const name of SECRET_NAMES) {
+      const message = weakSecretMessage(name, data[name]);
+
+      if (message) {
+        ctx.addIssue({ code: "custom", path: [name], message });
+      }
+    }
+
+    if (data.JWT_SECRET === data.INTERNAL_API_KEY) {
       ctx.addIssue({
         code: "custom",
-        path: ["RESEND_API_KEY"],
-        message: "RESEND_API_KEY é obrigatória quando NODE_ENV=production",
+        path: ["INTERNAL_API_KEY"],
+        message: "INTERNAL_API_KEY não pode ser igual ao JWT_SECRET",
       });
     }
   });

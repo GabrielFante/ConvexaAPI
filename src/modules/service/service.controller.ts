@@ -1,11 +1,13 @@
 import type { Request, Response } from "express";
+import { paginationQuerySchema } from "../../shared/validation/pagination";
 import { idParam } from "../../shared/validation/common";
 import { serviceService } from "./service.service";
 import { createServiceSchema, updateServiceSchema } from "./service.schema";
 
 export const serviceController = {
-  async list(_req: Request, res: Response) {
-    const services = await serviceService.list();
+  async list(req: Request, res: Response) {
+    const pagination = paginationQuerySchema.parse(req.query);
+    const services = await serviceService.list(pagination);
     res.json(services);
   },
 

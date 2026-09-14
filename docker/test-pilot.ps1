@@ -9,7 +9,10 @@ $env:APP_URL = 'https://api-convexa.altvia.cloud'
 $env:TEST_PASSWORD = [guid]::NewGuid().ToString('N')
 try {
   docker compose -p $project -f docker-compose.dokploy.yml up -d --build --wait --wait-timeout 180
-  if ($LASTEXITCODE -ne 0) { throw 'Containers failed readiness' }
+  if ($LASTEXITCODE -ne 0) {
+    docker compose -p $project -f docker-compose.dokploy.yml logs --tail 30 api migrate
+    throw 'Containers failed readiness'
+  }
   Get-Content docker/smoke.mjs -Raw | docker compose -p $project -f docker-compose.dokploy.yml exec -T -e TEST_PASSWORD -e TEST_PHASE=create api node --input-type=module
   if ($LASTEXITCODE -ne 0) { throw 'Initial smoke failed' }
   docker compose -p $project -f docker-compose.dokploy.yml up -d --force-recreate --wait --wait-timeout 180

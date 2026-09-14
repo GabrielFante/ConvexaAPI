@@ -8,6 +8,7 @@ const call = async (path, data, token, method) => {
   return {status:r.status, data:text ? JSON.parse(text):null};
 };
 assert.equal((await call('/health')).status,200);
+assert.equal((await call('/health/ready')).status,200);
 assert.equal((await call('/api/auth/me')).status,401);
 assert.equal((await call('/internal/tenants/by-phone-number-id/test')).status,401);
 assert.equal((await call('/api/auth/forgot-password',{email:'pilot@example.invalid'})).status,503);
@@ -31,8 +32,8 @@ if (process.env.TEST_PHASE !== 'verify') {
 }
 const services = await call('/api/services',null,one.accessToken);
 assert.equal(services.status,200);
-assert.equal(services.data.length,1);
+assert.equal(services.data.data.length,1);
 const two = await login('two');
-assert.equal((await call('/api/services',null,two.accessToken)).data.length,0);
-assert.equal((await call(`/api/services/${services.data[0].id}`,null,two.accessToken)).status,404);
+assert.equal((await call('/api/services',null,two.accessToken)).data.data.length,0);
+assert.equal((await call(`/api/services/${services.data.data[0].id}`,null,two.accessToken)).status,404);
 console.log('PASS health, auth, internal key, disabled reset, registration/login, CRUD, tenant isolation and persistence',process.env.TEST_PHASE);

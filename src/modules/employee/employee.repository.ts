@@ -2,15 +2,26 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../shared/database/prisma";
 import { AppError } from "../../shared/errors/AppError";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
+import {
+  toPrismaPage,
+  type Pagination,
+} from "../../shared/validation/pagination";
 import type {
   CreateEmployeeInput,
   EmployeeHourInput,
   UpdateEmployeeInput,
 } from "./employee.schema";
 
-const employeeInclude = {
+const employeeFields = {
+  id: true,
+  name: true,
+  active: true,
+  createdAt: true,
+  updatedAt: true,
   services: { select: { serviceId: true } },
-  hours: true,
+  hours: {
+    select: { id: true, dayOfWeek: true, startsAt: true, endsAt: true },
+  },
 } as const;
 
 function notFound() {
@@ -20,7 +31,7 @@ function notFound() {
 function findScoped(id: string) {
   return prisma.employee.findFirst({
     where: { id, businessId: getBusinessId() },
-    include: employeeInclude,
+    select: employeeFields,
   });
 }
 
@@ -39,6 +50,28 @@ async function assertOwned(
   }
 }
 
+async function ownedServiceIds(
+  tx: Prisma.TransactionClient,
+  serviceIds: string[],
+  businessId: string,
+): Promise<string[]> {
+  const unique = [...new Set(serviceIds)];
+
+  if (!unique.length) {
+    return unique;
+  }
+
+  const owned = await tx.service.count({
+    where: { id: { in: unique }, businessId },
+  });
+
+  if (owned !== unique.length) {
+    throw new AppError("Serviço não encontrado", 404);
+  }
+
+  return unique;
+}
+
 async function findScopedOrFail(id: string) {
   const employee = await findScoped(id);
 
@@ -50,12 +83,20 @@ async function findScopedOrFail(id: string) {
 }
 
 export const employeeRepository = {
-  list() {
-    return prisma.employee.findMany({
-      where: { businessId: getBusinessId() },
-      orderBy: { createdAt: "desc" },
-      include: employeeInclude,
-    });
+  async list(pagination: Pagination) {
+    const where = { businessId: getBusinessId() };
+
+    const [data, total] = await prisma.$transaction([
+      prisma.employee.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        select: employeeFields,
+        ...toPrismaPage(pagination),
+      }),
+      prisma.employee.count({ where }),
+    ]);
+
+    return { data, total };
   },
 
   findById(id: string) {
@@ -63,17 +104,27 @@ export const employeeRepository = {
   },
 
   create(data: CreateEmployeeInput) {
-    return prisma.employee.create({
-      data: {
-        businessId: getBusinessId(),
-        name: data.name,
-        active: data.active,
-        services: data.serviceIds?.length
-          ? { create: data.serviceIds.map((serviceId) => ({ serviceId })) }
-          : undefined,
-        hours: data.hours?.length ? { create: data.hours } : undefined,
-      },
-      include: employeeInclude,
+    const businessId = getBusinessId();
+
+    return prisma.$transaction(async (tx) => {
+      const serviceIds = await ownedServiceIds(
+        tx,
+        data.serviceIds ?? [],
+        businessId,
+      );
+
+      return tx.employee.create({
+        data: {
+          businessId,
+          name: data.name,
+          active: data.active,
+          services: serviceIds.length
+            ? { create: serviceIds.map((serviceId) => ({ serviceId })) }
+            : undefined,
+          hours: data.hours?.length ? { create: data.hours } : undefined,
+        },
+        select: employeeFields,
+      });
     });
   },
 
@@ -104,12 +155,13 @@ export const employeeRepository = {
     const businessId = getBusinessId();
     await prisma.$transaction(async (tx) => {
       await assertOwned(tx, id, businessId);
+      const owned = await ownedServiceIds(tx, serviceIds, businessId);
       await tx.employeeService.deleteMany({
         where: { employeeId: id, employee: { businessId } },
       });
-      if (serviceIds.length) {
+      if (owned.length) {
         await tx.employeeService.createMany({
-          data: serviceIds.map((serviceId) => ({ employeeId: id, serviceId })),
+          data: owned.map((serviceId) => ({ employeeId: id, serviceId })),
         });
       }
     });

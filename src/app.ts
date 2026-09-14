@@ -1,5 +1,6 @@
 import express, { Router } from "express";
 import cors from "cors";
+import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import { env } from "./shared/env";
 import { AppError } from "./shared/errors/AppError";
@@ -29,46 +30,52 @@ const app = express();
 
 app.set("trust proxy", 1);
 
+app.use(helmet());
 app.use(cors(env.CORS_ORIGINS.length > 0 ? { origin: env.CORS_ORIGINS } : {}));
-app.use(express.json());
+app.use(express.json({ limit: "100kb" }));
 
 app.use(healthRoutes);
 
-const authRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 20,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  skip: () => env.NODE_ENV === "test",
-  handler: (_req, _res, next) =>
-    next(
-      new AppError(
-        "Muitas tentativas. Aguarde alguns minutos e tente novamente",
-        429,
-      ),
-    ),
-});
+const createRateLimit = (windowMs: number, limit: number, message: string) =>
+  rateLimit({
+    windowMs,
+    limit,
+    standardHeaders: "draft-7",
+    legacyHeaders: false,
+    skip: () => env.NODE_ENV === "test",
+    handler: (_req, _res, next) => next(new AppError(message, 429)),
+  });
 
-const passwordResetRateLimit = rateLimit({
-  windowMs: 60 * 60 * 1000,
-  limit: 5,
-  standardHeaders: "draft-7",
-  legacyHeaders: false,
-  skip: () => env.NODE_ENV === "test",
-  handler: (_req, _res, next) =>
-    next(
-      new AppError(
-        "Muitos pedidos de redefinição de senha. Tente novamente mais tarde",
-        429,
-      ),
-    ),
-});
+const TOO_MANY_REQUESTS =
+  "Muitas requisições. Aguarde alguns minutos e tente novamente";
+
+const authRateLimit = createRateLimit(
+  15 * 60 * 1000,
+  20,
+  "Muitas tentativas. Aguarde alguns minutos e tente novamente",
+);
+
+const passwordResetRateLimit = createRateLimit(
+  60 * 60 * 1000,
+  5,
+  "Muitos pedidos de redefinição de senha. Tente novamente mais tarde",
+);
+
+const apiRateLimit = createRateLimit(15 * 60 * 1000, 300, TOO_MANY_REQUESTS);
+
+const internalRateLimit = createRateLimit(60 * 1000, 600, TOO_MANY_REQUESTS);
 
 app.use("/api/auth/forgot-password", passwordResetRateLimit);
 app.use("/api/auth", authRateLimit, authPublicRoutes);
-app.use("/internal", internalKeyMiddleware, businessInternalRoutes);
+app.use(
+  "/internal",
+  internalRateLimit,
+  internalKeyMiddleware,
+  businessInternalRoutes,
+);
 
 const apiRoutes = Router();
+apiRoutes.use(apiRateLimit);
 apiRoutes.use(authMiddleware);
 
 apiRoutes.use("/auth", authPrivateRoutes);

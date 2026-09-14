@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { paginationQuerySchema } from "../../shared/validation/pagination";
 import { idParam } from "../../shared/validation/common";
 import { customerService } from "./customer.service";
 import {
@@ -8,8 +9,9 @@ import {
 } from "./customer.schema";
 
 export const customerController = {
-  async list(_req: Request, res: Response) {
-    const customers = await customerService.list();
+  async list(req: Request, res: Response) {
+    const pagination = paginationQuerySchema.parse(req.query);
+    const customers = await customerService.list(pagination);
     res.json(customers);
   },
 

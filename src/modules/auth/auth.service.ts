@@ -1,4 +1,5 @@
 import type { AuthUser } from "../../shared/auth/jwt";
+import { logger } from "../../shared/logger/logger";
 import { signAccessToken } from "../../shared/auth/jwt";
 import { hashPassword, verifyPassword } from "../../shared/auth/password";
 import {
@@ -186,7 +187,7 @@ export const authService = {
         }),
       });
     } catch (error) {
-      console.error("Falha ao enviar e-mail de redefinição de senha", error);
+      logger.error("Falha ao enviar e-mail de redefinição de senha", error);
     }
   },
 
@@ -221,9 +222,12 @@ export const authService = {
 
   async me() {
     const current = getCurrentUser();
-    const found = await authRepository.findUserById(current.userId);
+    const found = await authRepository.findCurrentUser(
+      current.userId,
+      current.businessId,
+    );
 
-    if (!found || !found.active || found.businessId !== current.businessId) {
+    if (!found || !found.active) {
       throw new AppError(INVALID_SESSION_MESSAGE, 401);
     }
 

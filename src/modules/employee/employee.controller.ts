@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { paginationQuerySchema } from "../../shared/validation/pagination";
 import { idParam } from "../../shared/validation/common";
 import { employeeService } from "./employee.service";
 import {
@@ -9,8 +10,9 @@ import {
 } from "./employee.schema";
 
 export const employeeController = {
-  async list(_req: Request, res: Response) {
-    const employees = await employeeService.list();
+  async list(req: Request, res: Response) {
+    const pagination = paginationQuerySchema.parse(req.query);
+    const employees = await employeeService.list(pagination);
     res.json(employees);
   },
 

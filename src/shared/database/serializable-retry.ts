@@ -1,17 +1,15 @@
 import { Prisma } from "@prisma/client";
+import { hasSqlState, SERIALIZATION_FAILURE } from "./sqlstate";
 
 const MAX_ATTEMPTS = 3;
 const BASE_DELAY_MS = 20;
-const SERIALIZATION_FAILURE = "40001";
 
 function isSerializationConflict(error: unknown): boolean {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     return error.code === "P2034";
   }
 
-  return (
-    error instanceof Error && error.message.includes(SERIALIZATION_FAILURE)
-  );
+  return hasSqlState(error, SERIALIZATION_FAILURE);
 }
 
 function backoffFor(attempt: number): number {

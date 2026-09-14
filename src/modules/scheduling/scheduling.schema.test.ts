@@ -17,8 +17,30 @@ function issuePaths(data: unknown): string[] {
 }
 
 describe("availabilityQuerySchema", () => {
-  it("aceita consulta sem funcionário", () => {
-    expect(availabilityQuerySchema.parse(query)).toEqual(query);
+  it("aceita consulta sem funcionário e aplica o limit default", () => {
+    expect(availabilityQuerySchema.parse(query)).toEqual({
+      ...query,
+      limit: 3,
+    });
+  });
+
+  it("converte limit vindo da query string", () => {
+    expect(availabilityQuerySchema.parse({ ...query, limit: "50" }).limit).toBe(
+      50,
+    );
+  });
+
+  it("rejeita limit acima de 100", () => {
+    const result = availabilityQuerySchema.safeParse({ ...query, limit: 101 });
+
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.path).toEqual(["limit"]);
+  });
+
+  it("rejeita limit menor que 1", () => {
+    expect(
+      availabilityQuerySchema.safeParse({ ...query, limit: 0 }).success,
+    ).toBe(false);
   });
 
   it("converte slotIntervalMinutes vindo da query string", () => {

@@ -2,11 +2,16 @@ import type { ErrorRequestHandler, RequestHandler } from "express";
 import { Prisma } from "@prisma/client";
 import { ZodError } from "zod";
 import { AppError } from "../errors/AppError";
+import {
+  CHECK_VIOLATION,
+  EXCLUSION_VIOLATION,
+  hasSqlState,
+  SERIALIZATION_FAILURE,
+} from "../database/sqlstate";
+import { logger } from "../logger/logger";
 
 const SLOT_TAKEN_MESSAGE =
   "Este horário acabou de ser ocupado. Escolha outro horário e tente novamente";
-
-const EXCLUSION_CONSTRAINT_SQLSTATE = "23P01";
 
 const prismaErrors: Record<
   string,
@@ -40,6 +45,15 @@ const prismaErrors: Record<
   },
 };
 
+function isPayloadTooLarge(err: unknown): boolean {
+  return (
+    typeof err === "object" &&
+    err !== null &&
+    "type" in err &&
+    (err as { type?: unknown }).type === "entity.too.large"
+  );
+}
+
 export const notFoundHandler: RequestHandler = (req, res) => {
   res.status(404).json({
     status: "error",
@@ -54,6 +68,15 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
       status: "error",
       ...(err.code ? { code: err.code } : {}),
       message: err.message,
+    });
+    return;
+  }
+
+  if (isPayloadTooLarge(err)) {
+    res.status(413).json({
+      status: "error",
+      code: "PAYLOAD_TOO_LARGE",
+      message: "Corpo da requisição excede o tamanho máximo permitido",
     });
     return;
   }
@@ -85,8 +108,8 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   }
 
   if (
-    err instanceof Prisma.PrismaClientUnknownRequestError &&
-    err.message.includes(EXCLUSION_CONSTRAINT_SQLSTATE)
+    hasSqlState(err, EXCLUSION_VIOLATION) ||
+    hasSqlState(err, SERIALIZATION_FAILURE)
   ) {
     res.status(409).json({
       status: "error",
@@ -96,8 +119,19 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     return;
   }
 
+  if (hasSqlState(err, CHECK_VIOLATION)) {
+    res.status(400).json({
+      status: "error",
+      code: "CHECK_VIOLATION",
+      message: "Dados de entrada inválidos",
+    });
+    return;
+  }
+
   if (err instanceof Prisma.PrismaClientValidationError) {
-    console.error("PrismaClientValidationError");
+    logger.error("Consulta invalida enviada ao Prisma", {
+      name: err.name,
+    });
 
     res.status(400).json({
       status: "error",
@@ -107,7 +141,7 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     return;
   }
 
-  console.error(err);
+  logger.error("Erro nao tratado", err);
 
   res.status(500).json({
     status: "error",

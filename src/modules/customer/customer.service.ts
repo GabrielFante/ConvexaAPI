@@ -1,4 +1,5 @@
 import { AppError } from "../../shared/errors/AppError";
+import { buildPage, type Pagination } from "../../shared/validation/pagination";
 import { customerRepository } from "./customer.repository";
 import type {
   CreateCustomerInput,
@@ -17,8 +18,9 @@ async function getOwnedOrFail(id: string) {
 }
 
 export const customerService = {
-  list() {
-    return customerRepository.list();
+  async list(pagination: Pagination) {
+    const { data, total } = await customerRepository.list(pagination);
+    return buildPage(data, total, pagination);
   },
 
   get(id: string) {
