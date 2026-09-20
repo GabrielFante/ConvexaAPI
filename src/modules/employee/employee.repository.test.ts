@@ -11,7 +11,12 @@ const SERVICE_OF_B = "77777777-7777-4777-8777-777777777777";
 const OTHER_SERVICE_OF_B = "88888888-8888-4888-8888-888888888888";
 
 const db = vi.hoisted(() => {
-  type Employee = { id: string; businessId: string; name: string };
+  type Employee = {
+    id: string;
+    businessId: string;
+    name: string;
+    active: boolean;
+  };
   type EmployeeService = { employeeId: string; serviceId: string };
   type EmployeeHour = {
     employeeId: string;
@@ -81,6 +86,7 @@ const db = vi.hoisted(() => {
           data: {
             businessId: string;
             name: string;
+            active?: boolean;
             services?: { create: { serviceId: string }[] };
           };
         }) => {
@@ -88,6 +94,7 @@ const db = vi.hoisted(() => {
             id: `emp-${state.employees.length + 1}`,
             businessId: args.data.businessId,
             name: args.data.name,
+            active: args.data.active ?? true,
           };
 
           state.employees.push(employee);
@@ -197,7 +204,14 @@ vi.mock("../../shared/database/prisma", () => ({ prisma: db.prisma }));
 
 beforeEach(() => {
   db.seed(
-    [{ id: EMPLOYEE_OF_B, businessId: TENANT_B, name: "Funcionário do B" }],
+    [
+      {
+        id: EMPLOYEE_OF_B,
+        businessId: TENANT_B,
+        name: "Funcionário do B",
+        active: true,
+      },
+    ],
     [{ employeeId: EMPLOYEE_OF_B, serviceId: SERVICE_OF_B }],
   );
 });
@@ -224,13 +238,23 @@ describe("employeeRepository — escopo de tenant nas escritas", () => {
     expect(db.state.employees[0]?.name).toBe("Funcionário do B");
   });
 
-  it("não remove funcionário de outro tenant e responde 404", async () => {
+  it("desativa o funcionário do próprio tenant sem apagar a linha", async () => {
+    await runWithTenant(TENANT_B, () =>
+      employeeRepository.deactivate(EMPLOYEE_OF_B),
+    );
+
+    expect(db.state.employees).toHaveLength(1);
+    expect(db.state.employees[0]?.active).toBe(false);
+  });
+
+  it("não desativa funcionário de outro tenant e responde 404", async () => {
     const attempt = runWithTenant(TENANT_A, () =>
-      employeeRepository.delete(EMPLOYEE_OF_B),
+      employeeRepository.deactivate(EMPLOYEE_OF_B),
     );
 
     await expect(attempt).rejects.toMatchObject({ statusCode: 404 });
     expect(db.state.employees).toHaveLength(1);
+    expect(db.state.employees[0]?.active).toBe(true);
   });
 
   it("substitui os serviços do funcionário do próprio tenant", async () => {
