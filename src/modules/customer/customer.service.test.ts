@@ -2,6 +2,11 @@ import { describe, it, expect, beforeEach, vi } from "vitest";
 import { Prisma } from "@prisma/client";
 import { runWithTenant } from "../../shared/tenant/tenant-context";
 import { customerService } from "./customer.service";
+import {
+  createCustomerSchema,
+  resolveCustomerSchema,
+  updateCustomerSchema,
+} from "./customer.schema";
 
 const TENANT_A = "11111111-1111-4111-8111-111111111111";
 const TENANT_B = "22222222-2222-4222-8222-222222222222";
@@ -160,5 +165,57 @@ describe("customerService.resolve", () => {
     );
 
     expect(resolved.name).toBe("Gabriel");
+  });
+});
+
+describe("schemas de customer — telefone normalizado antes de chegar ao banco", () => {
+  it("resolve entrega E.164 ao service, qualquer que seja o formato digitado", () => {
+    const variacoes = [
+      "+5511988887777",
+      "5511988887777",
+      "11988887777",
+      "(11) 98888-7777",
+    ];
+
+    for (const entrada of variacoes) {
+      expect(resolveCustomerSchema.parse({ phone: entrada })).toMatchObject({
+        phone: "+5511988887777",
+      });
+    }
+  });
+
+  it("create normaliza o telefone e preserva os outros campos", () => {
+    expect(
+      createCustomerSchema.parse({
+        name: "Ana",
+        phone: "(11) 98888-7777",
+        notes: "prefere manhã",
+      }),
+    ).toEqual({
+      name: "Ana",
+      phone: "+5511988887777",
+      notes: "prefere manhã",
+    });
+  });
+
+  it("update mantém a normalização ao derivar do create com partial", () => {
+    expect(
+      updateCustomerSchema.parse({ phone: "11 98888-7777" }),
+    ).toMatchObject({ phone: "+5511988887777" });
+  });
+
+  it("update sem telefone continua válido", () => {
+    expect(updateCustomerSchema.parse({ name: "Ana Maria" })).toEqual({
+      name: "Ana Maria",
+    });
+  });
+
+  it("recusa telefone invalido em vez de gravar sujo", () => {
+    expect(resolveCustomerSchema.safeParse({ phone: "11 999" }).success).toBe(
+      false,
+    );
+    expect(
+      createCustomerSchema.safeParse({ name: "Ana", phone: "abc" }).success,
+    ).toBe(false);
   });
 });
