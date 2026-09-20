@@ -78,10 +78,30 @@ export const businessRepository = {
   },
 
   update(data: UpdateBusinessInput) {
-    return prisma.business.update({
-      where: { id: getBusinessId() },
-      data,
-      select: businessWithSchedule,
+    const { metaAccessToken, metaAppSecret, ...businessData } = data;
+    const credentials = {
+      ...(metaAccessToken === undefined ? {} : { metaAccessToken }),
+      ...(metaAppSecret === undefined ? {} : { metaAppSecret }),
+    };
+    const businessId = getBusinessId();
+
+    return prisma.$transaction(async (tx) => {
+      const business = await tx.business.update({
+        where: { id: businessId },
+        data: businessData,
+        select: businessWithSchedule,
+      });
+
+      if (Object.keys(credentials).length) {
+        await tx.businessIntegration.upsert({
+          where: { businessId },
+          create: { businessId, ...credentials },
+          update: credentials,
+          select: { businessId: true },
+        });
+      }
+
+      return business;
     });
   },
 

@@ -39,13 +39,21 @@ const prismaMock = vi.hoisted(() => {
     return result;
   };
 
-  return {
+  const client = {
     business: {
       create: vi.fn(applySelect),
       findFirst: vi.fn(applySelect),
       findUnique: vi.fn(applySelect),
       update: vi.fn(applySelect),
     },
+    businessIntegration: {
+      upsert: vi.fn(() => Promise.resolve({ businessId: row.id })),
+    },
+  };
+
+  return {
+    ...client,
+    $transaction: vi.fn((run: (tx: typeof client) => unknown) => run(client)),
   };
 });
 
@@ -73,14 +81,28 @@ describe("businessRepository — credenciais da Meta", () => {
     expect(business).not.toHaveProperty("metaAccessToken");
   });
 
-  it("mantém metaAccessToken gravável via update", async () => {
+  it("grava metaAccessToken em BusinessIntegration, nunca em Business", async () => {
     await runWithTenant(BUSINESS_ID, () =>
       businessRepository.update({ metaAccessToken: SECRET }),
     );
 
+    expect(prismaMock.businessIntegration.upsert).toHaveBeenCalledWith({
+      where: { businessId: BUSINESS_ID },
+      create: { businessId: BUSINESS_ID, metaAccessToken: SECRET },
+      update: { metaAccessToken: SECRET },
+      select: { businessId: true },
+    });
     expect(prismaMock.business.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { metaAccessToken: SECRET } }),
+      expect.objectContaining({ data: {} }),
     );
+  });
+
+  it("não toca em BusinessIntegration quando o update não traz credencial", async () => {
+    await runWithTenant(BUSINESS_ID, () =>
+      businessRepository.update({ name: "Novo nome" }),
+    );
+
+    expect(prismaMock.businessIntegration.upsert).not.toHaveBeenCalled();
   });
 
   it("mantém os demais campos de configuração da Meta visíveis", async () => {
@@ -119,13 +141,39 @@ describe("businessRepository — credenciais da Meta", () => {
     });
   });
 
-  it("mantém metaAppSecret gravável via update", async () => {
+  it("grava metaAppSecret em BusinessIntegration, nunca em Business", async () => {
     await runWithTenant(BUSINESS_ID, () =>
       businessRepository.update({ metaAppSecret: APP_SECRET }),
     );
 
+    expect(prismaMock.businessIntegration.upsert).toHaveBeenCalledWith({
+      where: { businessId: BUSINESS_ID },
+      create: { businessId: BUSINESS_ID, metaAppSecret: APP_SECRET },
+      update: { metaAppSecret: APP_SECRET },
+      select: { businessId: true },
+    });
     expect(prismaMock.business.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: { metaAppSecret: APP_SECRET } }),
+      expect.objectContaining({ data: {} }),
+    );
+  });
+
+  it("grava as duas credenciais numa unica ida ao BusinessIntegration", async () => {
+    await runWithTenant(BUSINESS_ID, () =>
+      businessRepository.update({
+        name: "Novo nome",
+        metaAccessToken: SECRET,
+        metaAppSecret: APP_SECRET,
+      }),
+    );
+
+    expect(prismaMock.businessIntegration.upsert).toHaveBeenCalledOnce();
+    expect(prismaMock.businessIntegration.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        update: { metaAccessToken: SECRET, metaAppSecret: APP_SECRET },
+      }),
+    );
+    expect(prismaMock.business.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: { name: "Novo nome" } }),
     );
   });
 });
