@@ -7,7 +7,7 @@ import { timeBlockRepository } from "./timeblock/timeblock.repository";
 import { schedulingRepository } from "./scheduling/scheduling.repository";
 
 const TENANT = "11111111-1111-4111-8111-111111111111";
-const PAGINATION = { page: 1, perPage: 20 };
+const PAGINATION = { page: 1, perPage: 20, includeInactive: false };
 const ID = "22222222-2222-4222-8222-222222222222";
 
 type Args = { select?: Record<string, unknown> };

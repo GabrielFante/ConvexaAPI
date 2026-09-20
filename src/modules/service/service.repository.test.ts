@@ -8,7 +8,12 @@ const TENANT_B = "22222222-2222-4222-8222-222222222222";
 const SERVICE_OF_B = "44444444-4444-4444-8444-444444444444";
 
 const db = vi.hoisted(() => {
-  type Row = { id: string; businessId: string; name: string };
+  type Row = {
+    id: string;
+    businessId: string;
+    name: string;
+    active: boolean;
+  };
   type Where = { id: string; businessId: string };
 
   let rows: Row[] = [];
@@ -30,10 +35,10 @@ const db = vi.hoisted(() => {
             return Promise.resolve(updated.map((row) => ({ ...row })));
           },
         ),
-        deleteMany: vi.fn((args: { where: Where }) => {
-          const before = rows.length;
-          rows = rows.filter((row) => !matches(row, args.where));
-          return Promise.resolve({ count: before - rows.length });
+        updateMany: vi.fn((args: { where: Where; data: Partial<Row> }) => {
+          const updated = rows.filter((row) => matches(row, args.where));
+          updated.forEach((row) => Object.assign(row, args.data));
+          return Promise.resolve({ count: updated.length });
         }),
       },
     },
@@ -43,7 +48,9 @@ const db = vi.hoisted(() => {
 vi.mock("../../shared/database/prisma", () => ({ prisma: db.prisma }));
 
 beforeEach(() => {
-  db.seed([{ id: SERVICE_OF_B, businessId: TENANT_B, name: "Corte" }]);
+  db.seed([
+    { id: SERVICE_OF_B, businessId: TENANT_B, name: "Corte", active: true },
+  ]);
 });
 
 describe("serviceRepository — escopo de tenant nas escritas", () => {
@@ -68,15 +75,18 @@ describe("serviceRepository — escopo de tenant nas escritas", () => {
     expect(db.rows()[0]?.name).toBe("Corte");
   });
 
-  it("remove o serviço do próprio tenant", async () => {
-    await runWithTenant(TENANT_B, () => serviceRepository.delete(SERVICE_OF_B));
+  it("desativa o serviço do próprio tenant sem apagar a linha", async () => {
+    await runWithTenant(TENANT_B, () =>
+      serviceRepository.deactivate(SERVICE_OF_B),
+    );
 
-    expect(db.rows()).toHaveLength(0);
+    expect(db.rows()).toHaveLength(1);
+    expect(db.rows()[0]?.active).toBe(false);
   });
 
-  it("não remove serviço de outro tenant e responde 404", async () => {
+  it("não desativa serviço de outro tenant e responde 404", async () => {
     const attempt = runWithTenant(TENANT_A, () =>
-      serviceRepository.delete(SERVICE_OF_B),
+      serviceRepository.deactivate(SERVICE_OF_B),
     );
 
     await expect(attempt).rejects.toMatchObject({
@@ -84,5 +94,6 @@ describe("serviceRepository — escopo de tenant nas escritas", () => {
       message: "Serviço não encontrado",
     });
     expect(db.rows()).toHaveLength(1);
+    expect(db.rows()[0]?.active).toBe(true);
   });
 });
