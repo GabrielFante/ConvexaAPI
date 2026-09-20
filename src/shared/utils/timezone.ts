@@ -36,7 +36,11 @@ function formatterFor(timezone: string): Intl.DateTimeFormat {
       minute: "2-digit",
     });
   } catch {
-    throw new AppError(`Timezone inválido: ${timezone}`, 500);
+    throw new AppError(
+      `Timezone inválido: ${timezone}`,
+      500,
+      "INVALID_TIMEZONE",
+    );
   }
 
   formatters.set(timezone, formatter);

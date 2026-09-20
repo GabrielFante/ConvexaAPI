@@ -64,6 +64,17 @@ export const notFoundHandler: RequestHandler = (req, res) => {
 
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof AppError) {
+    if (err.statusCode >= 500) {
+      logger.error("Falha interna sinalizada pela aplicacao", err);
+
+      res.status(err.statusCode).json({
+        status: "error",
+        code: "INTERNAL_ERROR",
+        message: "Erro interno do servidor",
+      });
+      return;
+    }
+
     res.status(err.statusCode).json({
       status: "error",
       ...(err.code ? { code: err.code } : {}),
