@@ -41,14 +41,13 @@ model Business {
   phone               String?
   metaPhoneNumberId   String?  @unique
   metaWabaId          String?
-  metaAccessToken     String?
-  metaAppSecret       String?
   aiSystemPrompt      String?
   slotIntervalMinutes Int      @default(15)
   bufferMinutes       Int      @default(0)
   createdAt           DateTime @default(now()) @db.Timestamptz(3)
   updatedAt           DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 
+  integration  BusinessIntegration?
   hours        BusinessHours[]
   closedDays   ClosedDay[]
   vacations    Vacation[]
@@ -58,6 +57,15 @@ model Business {
   customers    Customer[]
   appointments Appointment[]
   users        User[]
+}
+
+model BusinessIntegration {
+  businessId      String   @id @db.Uuid
+  business        Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  metaAccessToken String?
+  metaAppSecret   String?
+  createdAt       DateTime @default(now()) @db.Timestamptz(3)
+  updatedAt       DateTime @default(now()) @updatedAt @db.Timestamptz(3)
 }
 
 model BusinessHours {
