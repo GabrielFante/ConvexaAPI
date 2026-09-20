@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { Prisma } from "@prisma/client";
 import type { NextFunction, Request, Response } from "express";
+import { AppError } from "../errors/AppError";
 import { errorHandler } from "./errorHandler";
 
 type CapturedResponse = {
@@ -199,5 +200,43 @@ describe("errorHandler — SQLSTATE do driver do Prisma 7", () => {
     const erro = driverAdapterError("23514", "check constraint");
 
     expect(JSON.stringify(handle(erro).body)).not.toContain("Failing row");
+  });
+});
+
+describe("errorHandler — AppError", () => {
+  it("mantem mensagem e code do erro previsto de 4xx", () => {
+    const res = handle(
+      new AppError("Cliente não encontrado", 404, "NOT_FOUND"),
+    );
+
+    expect(res.statusCode).toBe(404);
+    expect(res.body?.code).toBe("NOT_FOUND");
+    expect(res.body?.message).toBe("Cliente não encontrado");
+  });
+
+  it("nao devolve a mensagem interna de um AppError de 5xx", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const res = handle(
+      new AppError(
+        "Timezone inválido: Mars/Olympus_Mons",
+        500,
+        "INVALID_TIMEZONE",
+      ),
+    );
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body?.code).toBe("INTERNAL_ERROR");
+    expect(res.body?.message).toBe("Erro interno do servidor");
+    expect(JSON.stringify(res.body)).not.toContain("Mars/Olympus_Mons");
+  });
+
+  it("registra no log a causa do AppError de 5xx que nao vai para a resposta", () => {
+    const write = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    handle(new AppError("Contexto de tenant ausente na requisição", 500));
+
+    expect(write).toHaveBeenCalledOnce();
+    expect(write.mock.calls[0]?.[0]).toContain("Contexto de tenant ausente");
   });
 });
