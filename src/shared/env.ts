@@ -95,6 +95,7 @@ export const envSchema = z
       .url("DIRECT_URL deve ser uma URL de conexão válida")
       .optional(),
     PORT: z.coerce.number().int().positive().default(3000),
+    HOST: z.string().min(1).default("0.0.0.0"),
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("development"),
