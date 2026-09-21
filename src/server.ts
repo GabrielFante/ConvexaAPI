@@ -21,8 +21,8 @@ function handleSignal(server: Server, signal: NodeJS.Signals) {
 async function start() {
   await assertUtcSession();
 
-  const server = app.listen(env.PORT, () => {
-    logger.info("API iniciada", { port: env.PORT });
+  const server = app.listen(env.PORT, env.HOST, () => {
+    logger.info("API iniciada", { host: env.HOST, port: env.PORT });
   });
 
   for (const signal of ["SIGTERM", "SIGINT"] as const) {
