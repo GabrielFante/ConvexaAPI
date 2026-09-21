@@ -14,7 +14,7 @@ USER node
 CMD ["./node_modules/.bin/prisma", "migrate", "deploy"]
 
 FROM build AS runtime-deps
-RUN npm prune --omit=dev --omit=peer --ignore-scripts
+RUN npm prune --omit=dev --omit=peer --ignore-scripts && npm run prune:prod
 
 FROM node:22-bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
