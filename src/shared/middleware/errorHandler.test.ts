@@ -170,6 +170,20 @@ describe("errorHandler — SQLSTATE do driver do Prisma 7", () => {
     expect(res.body?.message).not.toContain("23514");
   });
 
+  it("traduz 57014 em 503 DATABASE_TIMEOUT sem vazar a query", () => {
+    const erro = driverAdapterError(
+      "57014",
+      "canceling statement due to statement timeout",
+    );
+
+    const res = handle(erro);
+
+    expect(res.statusCode).toBe(503);
+    expect(res.body?.code).toBe("DATABASE_TIMEOUT");
+    expect(res.body?.message).not.toContain("statement timeout");
+    expect(res.body?.message).not.toContain("57014");
+  });
+
   it("traduz a violacao da constraint de exclusao em 409 SLOT_CONFLICT", () => {
     const erro = driverAdapterError(
       "23P01",
