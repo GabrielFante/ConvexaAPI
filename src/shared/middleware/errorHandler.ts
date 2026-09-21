@@ -5,6 +5,7 @@ import { AppError } from "../errors/AppError";
 import {
   CHECK_VIOLATION,
   EXCLUSION_VIOLATION,
+  QUERY_CANCELED,
   hasSqlState,
   SERIALIZATION_FAILURE,
 } from "../database/sqlstate";
@@ -126,6 +127,17 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
       status: "error",
       code: "SLOT_CONFLICT",
       message: SLOT_TAKEN_MESSAGE,
+    });
+    return;
+  }
+
+  if (hasSqlState(err, QUERY_CANCELED)) {
+    logger.error("Query cancelada por tempo limite no banco", err);
+
+    res.status(503).json({
+      status: "error",
+      code: "DATABASE_TIMEOUT",
+      message: "O banco de dados demorou para responder. Tente novamente",
     });
     return;
   }
