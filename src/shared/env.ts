@@ -25,6 +25,10 @@ const SECRET_PLACEHOLDER_WORDS = [
 
 const MIN_DISTINCT_SECRET_CHARS = 12;
 
+export const PRISMA_TRANSACTION_TIMEOUT_MS = 5000;
+
+const MAX_SANE_POOL_SIZE = 20;
+
 const SECRET_NAMES = ["JWT_SECRET", "INTERNAL_API_KEY"] as const;
 
 function weakSecretMessage(name: string, value: string): string | undefined {
@@ -96,6 +100,17 @@ export const envSchema = z
       .optional(),
     PORT: z.coerce.number().int().positive().default(3000),
     HOST: z.string().min(1).default("0.0.0.0"),
+    DATABASE_POOL_MAX: z.coerce.number().int().positive().default(5),
+    DATABASE_POOL_CONNECTION_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(2000),
+    DATABASE_STATEMENT_TIMEOUT_MS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(3000),
     NODE_ENV: z
       .enum(["development", "production", "test"])
       .default("development"),
@@ -129,8 +144,33 @@ export const envSchema = z
       ctx.addIssue({ code: "custom", ...mailIssue });
     }
 
+    if (data.DATABASE_STATEMENT_TIMEOUT_MS >= PRISMA_TRANSACTION_TIMEOUT_MS) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["DATABASE_STATEMENT_TIMEOUT_MS"],
+        message: `DATABASE_STATEMENT_TIMEOUT_MS deve ser menor que ${PRISMA_TRANSACTION_TIMEOUT_MS}ms, o tempo limite da transação do Prisma. Sendo maior, o Prisma desiste primeiro e o ROLLBACK fica na fila atrás da query em andamento, prendendo a conexão`,
+      });
+    }
+
+    if (data.DATABASE_POOL_MAX > MAX_SANE_POOL_SIZE) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["DATABASE_POOL_MAX"],
+        message: `DATABASE_POOL_MAX acima de ${MAX_SANE_POOL_SIZE} não aumenta throughput: as transações do agendamento são Serializable, e mais concorrência na mesma agenda vira mais conflito e mais retry`,
+      });
+    }
+
     if (data.NODE_ENV !== "production") {
       return;
+    }
+
+    if (data.DATABASE_POOL_MAX < 2) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["DATABASE_POOL_MAX"],
+        message:
+          "DATABASE_POOL_MAX deve ser no mínimo 2 em produção: com 1, o healthcheck disputa a única conexão com as requisições e derruba a instância sob carga",
+      });
     }
 
     if (data.CORS_ORIGINS.length === 0) {
