@@ -5,6 +5,9 @@ const defaults: Record<string, string> = {
   INTERNAL_API_KEY: "chave-interna-de-teste-com-32-caracteres",
   APP_URL: "http://localhost:5173",
   CORS_ORIGINS: "http://localhost:5173",
+  DATABASE_POOL_MAX: "5",
+  DATABASE_POOL_CONNECTION_TIMEOUT_MS: "2000",
+  DATABASE_STATEMENT_TIMEOUT_MS: "3000",
 };
 
 for (const [key, value] of Object.entries(defaults)) {
