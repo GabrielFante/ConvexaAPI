@@ -198,15 +198,27 @@ export const envSchema = z
     }
   });
 
-const parsed = envSchema.safeParse(process.env);
+export type Env = z.infer<typeof envSchema>;
 
-if (!parsed.success) {
-  console.error("❌ Variáveis de ambiente inválidas:");
-  for (const issue of parsed.error.issues) {
-    console.error(`  • ${issue.path.join(".")}: ${issue.message}`);
+export class InvalidEnvError extends Error {
+  constructor(readonly issues: string[]) {
+    super(`Variáveis de ambiente inválidas:\n${issues.join("\n")}`);
+    this.name = "InvalidEnvError";
   }
-  process.exit(1);
 }
 
-export const env = parsed.data;
-export type Env = typeof env;
+export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  const parsed = envSchema.safeParse(source);
+
+  if (!parsed.success) {
+    throw new InvalidEnvError(
+      parsed.error.issues.map(
+        (issue) => `  • ${issue.path.join(".")}: ${issue.message}`,
+      ),
+    );
+  }
+
+  return parsed.data;
+}
+
+export const env = loadEnv();

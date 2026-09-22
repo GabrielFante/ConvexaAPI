@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { envSchema } from "./env";
+import { InvalidEnvError, envSchema, loadEnv } from "./env";
 
 const validUrl = "postgresql://user:pass@localhost:5432/db";
 const secret = "a".repeat(32);
@@ -311,5 +311,49 @@ describe("pool do banco", () => {
 
   it("aceita pool de uma conexao so fora de producao", () => {
     expect(issuePaths({ ...baseEnv, DATABASE_POOL_MAX: "1" })).toEqual([]);
+  });
+});
+
+describe("loadEnv", () => {
+  it("devolve a env validada a partir da fonte recebida", () => {
+    const carregada = loadEnv({ ...baseEnv } as NodeJS.ProcessEnv);
+
+    expect(carregada.PORT).toBe(3000);
+    expect(carregada.DATABASE_URL).toBe(validUrl);
+  });
+
+  it("lanca InvalidEnvError em vez de derrubar o processo", () => {
+    expect(() => loadEnv({} as NodeJS.ProcessEnv)).toThrow(InvalidEnvError);
+  });
+
+  it("junta todos os problemas numa mensagem legivel", () => {
+    let capturado: InvalidEnvError | undefined;
+
+    try {
+      loadEnv({ ...baseEnv, JWT_SECRET: "curto" } as NodeJS.ProcessEnv);
+    } catch (error) {
+      capturado = error as InvalidEnvError;
+    }
+
+    expect(capturado?.issues).toHaveLength(1);
+    expect(capturado?.message).toContain("JWT_SECRET");
+    expect(capturado?.message).toContain("Variáveis de ambiente inválidas");
+  });
+
+  it("nao repassa o valor do segredo na mensagem", () => {
+    const segredoFraco = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    try {
+      loadEnv({
+        ...baseEnv,
+        NODE_ENV: "production",
+        CORS_ORIGINS: "https://painel.convexa.app",
+        RESEND_API_KEY: "re_chave",
+        MAIL_DRIVER: "resend",
+        JWT_SECRET: segredoFraco,
+      } as NodeJS.ProcessEnv);
+    } catch (error) {
+      expect((error as InvalidEnvError).message).not.toContain(segredoFraco);
+    }
   });
 });
