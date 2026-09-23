@@ -63,7 +63,7 @@ export const businessSchema = z.object({
 });
 
 export const tenantByPhoneNumberIdSchema = z.object({
-  id,
+  businessId: id,
   name: z.string(),
   timezone: z.string(),
   aiSystemPrompt: z.string().nullable(),
@@ -192,4 +192,60 @@ export const healthSchema = z.object({
 export const readinessSchema = z.object({
   status: z.enum(["ok", "unavailable"]),
   code: z.enum(["SHUTTING_DOWN", "DATABASE_UNAVAILABLE"]).optional(),
+});
+
+const wallClockFields = {
+  date: z.string().describe("Dia no fuso do negócio, YYYY-MM-DD"),
+  weekday: z.string().describe("Dia da semana por extenso, em português"),
+  time: z.string().describe("Hora de parede no fuso do negócio, HH:MM"),
+};
+
+export const agentSessionSchema = z.object({
+  token: z.string(),
+  tokenType: z.literal("Bearer"),
+  expiresIn: z.int(),
+  business: z.object({
+    id,
+    name: z.string(),
+    timezone: z.string(),
+    aiSystemPrompt: z.string().nullable(),
+  }),
+  customer: z.object({ id, name: z.string(), phone: z.string() }),
+  now: z.object(wallClockFields),
+});
+
+export const agentServiceSchema = z.object({
+  id,
+  name: z.string(),
+  durationMinutes: z.int(),
+  priceCents: z.int(),
+});
+
+export const agentAvailabilitySchema = z.object({
+  date: z.string(),
+  weekday: z.string(),
+  serviceId: id,
+  durationMinutes: z.int(),
+  totalSlots: z.int(),
+  slots: z.array(
+    z.object({
+      employeeId: id,
+      employeeName: z.string().nullable(),
+      startAt: instant,
+      endAt: instant,
+      time: wallClockFields.time,
+    }),
+  ),
+});
+
+export const agentAppointmentSchema = z.object({
+  id,
+  status: appointmentStatusSchema,
+  startAt: instant,
+  endAt: instant,
+  ...wallClockFields,
+  priceCents: z.int(),
+  durationMinutes: z.int(),
+  service: z.object({ id, name: z.string() }),
+  employee: z.object({ id, name: z.string() }),
 });
