@@ -40,8 +40,17 @@ import {
   rescheduleAppointmentSchema,
 } from "../../modules/appointment/appointment.schema";
 import { availabilityQuerySchema } from "../../modules/scheduling/scheduling.schema";
+import {
+  agentAvailabilitySchema as agentAvailabilityQuerySchema,
+  agentBookSchema,
+  agentSessionSchema as agentSessionInputSchema,
+} from "../../modules/agent/agent.schema";
 import { paginationQuerySchema } from "../validation/pagination";
 import {
+  agentAppointmentSchema,
+  agentAvailabilitySchema,
+  agentServiceSchema,
+  agentSessionSchema,
   apiErrorSchema,
   appointmentSchema,
   availabilitySchema,
@@ -176,11 +185,12 @@ API multi-tenant de agendamento da Convexa. Toda regra de agenda vive aqui: o pa
 
 ## Autenticação
 
-Três superfícies distintas:
+Quatro superfícies distintas:
 
 - **\`/api/auth/*\` públicas** — \`register\`, \`login\`, \`refresh\`, \`forgot-password\` e \`reset-password\` não exigem token.
 - **\`/api/*\`** — exigem \`Authorization: Bearer <accessToken>\`. O \`businessId\` sai do próprio token; **não** existe header de tenant.
 - **\`/internal/*\`** — exigem o header \`x-internal-key\`. É a superfície do n8n, usada antes de existir um usuário logado.
+- **\`/agent/*\`** — as tools do agente de IA. Exigem \`Authorization: Bearer <token>\` com o token de \`POST /internal/agent-sessions\`, que o n8n pede a cada mensagem recebida. O token amarra **o tenant e o cliente da conversa**: o agente nunca informa \`businessId\` nem \`customerId\`, então não consegue agir em nome de outra barbearia ou de outro cliente. O token do painel não vale aqui, e este não vale em \`/api\`.
 
 O \`accessToken\` expira (veja \`expiresIn\`, em segundos). Renove com \`POST /api/auth/refresh\` usando o \`refreshToken\`, que é rotacionado a cada uso: o token antigo deixa de valer na hora.
 
@@ -225,6 +235,10 @@ export function buildOpenApiDocument(serverUrl?: string) {
       { name: "time-block", description: "Bloqueios pontuais de agenda" },
       { name: "appointment", description: "Agendamentos" },
       { name: "scheduling", description: "Consulta de disponibilidade" },
+      {
+        name: "agent",
+        description: "Tools do agente de IA (token de sessão do agente)",
+      },
     ],
     security: [{ bearerAuth: [] }],
     components: {
@@ -240,6 +254,13 @@ export function buildOpenApiDocument(serverUrl?: string) {
           in: "header",
           name: "x-internal-key",
           description: "Chave de serviço do n8n. Não é um JWT",
+        },
+        agentToken: {
+          type: "http",
+          scheme: "bearer",
+          bearerFormat: "JWT",
+          description:
+            "token devolvido por POST /internal/agent-sessions. Vale 5 minutos e só para uma conversa",
         },
       },
       schemas: {
@@ -260,6 +281,10 @@ export function buildOpenApiDocument(serverUrl?: string) {
         Profile: output(profileSchema),
         Health: output(healthSchema),
         Readiness: output(readinessSchema),
+        AgentSession: output(agentSessionSchema),
+        AgentService: output(agentServiceSchema),
+        AgentAvailability: output(agentAvailabilitySchema),
+        AgentAppointment: output(agentAppointmentSchema),
       },
     },
     paths: {
@@ -273,6 +298,7 @@ export function buildOpenApiDocument(serverUrl?: string) {
       ...timeBlockPaths(),
       ...appointmentPaths(),
       ...schedulingPaths(),
+      ...agentPaths(),
     },
   };
 }
@@ -966,6 +992,112 @@ function schedulingPaths() {
         responses: {
           "200": ok("Horários livres", ref("Availability")),
           ...withNotFound,
+        },
+      },
+    },
+  };
+}
+
+function agentPaths() {
+  const agentSecurity = [{ agentToken: [] }];
+  const agentErrors = {
+    "400": VALIDATION,
+    "401": error("Token do agente ausente, inválido ou expirado"),
+    "429": RATE_LIMITED,
+    "503": UNAVAILABLE,
+  };
+
+  return {
+    "/internal/agent-sessions": {
+      post: {
+        tags: ["internal", "agent"],
+        summary: "Abre a sessão do agente para uma mensagem recebida",
+        description:
+          'Chamada pelo n8n a cada mensagem do WhatsApp. Resolve o tenant pelo `phoneNumberId` da Meta, faz o upsert do cliente pelo telefone de quem escreveu e devolve um token de 5 minutos que amarra os dois. Traz também o `aiSystemPrompt` do negócio e o `now` já no fuso da empresa, para o agente interpretar "amanhã" sem converter fuso',
+        operationId: "createAgentSession",
+        security: [{ internalKey: [] }],
+        requestBody: body(agentSessionInputSchema),
+        responses: {
+          "201": created("Sessão criada", ref("AgentSession")),
+          "400": VALIDATION,
+          "401": error("Chave interna inválida"),
+          "404": error("Nenhuma empresa usa este phone_number_id"),
+          "429": RATE_LIMITED,
+          "503": UNAVAILABLE,
+        },
+      },
+    },
+    "/agent/services": {
+      get: {
+        tags: ["agent"],
+        summary: "Catálogo de serviços ativos",
+        operationId: "agentListServices",
+        security: agentSecurity,
+        responses: {
+          "200": ok("Serviços ativos", arrayOf("AgentService")),
+          ...agentErrors,
+        },
+      },
+    },
+    "/agent/availability": {
+      get: {
+        tags: ["agent"],
+        summary: "Horários livres de um serviço num dia",
+        description:
+          "Mesma regra de `/api/availability`, com `limit` default 3 e **máximo 10** — a Meta cobra por mensagem. Cada slot já vem com `time` no fuso da empresa e o nome do funcionário",
+        operationId: "agentGetAvailability",
+        security: agentSecurity,
+        parameters: queryParams(agentAvailabilityQuerySchema),
+        responses: {
+          "200": ok("Horários livres", ref("AgentAvailability")),
+          "404": NOT_FOUND,
+          ...agentErrors,
+        },
+      },
+    },
+    "/agent/appointments": {
+      get: {
+        tags: ["agent"],
+        summary: "Próximos agendamentos ativos do cliente da conversa",
+        operationId: "agentListAppointments",
+        security: agentSecurity,
+        responses: {
+          "200": ok("Agendamentos", arrayOf("AgentAppointment")),
+          ...agentErrors,
+        },
+      },
+      post: {
+        tags: ["agent"],
+        summary: "Agenda para o cliente da conversa",
+        description:
+          "Passa pelo Scheduling Engine como qualquer agendamento. O cliente sai do token, não do corpo. Responde 409 se o horário foi ocupado — reconsulte `/agent/availability`",
+        operationId: "agentBookAppointment",
+        security: agentSecurity,
+        requestBody: body(agentBookSchema),
+        responses: {
+          "201": created("Agendamento criado", ref("AgentAppointment")),
+          "404": NOT_FOUND,
+          "409": CONFLICT,
+          ...agentErrors,
+        },
+      },
+    },
+    "/agent/appointments/{id}/cancel": {
+      post: {
+        tags: ["agent"],
+        summary: "Cancela um agendamento do cliente da conversa",
+        description:
+          "Agendamento de outro cliente responde 404, igual a um id inexistente",
+        operationId: "agentCancelAppointment",
+        security: agentSecurity,
+        parameters: [idPath],
+        responses: {
+          "200": ok("Agendamento cancelado", ref("AgentAppointment")),
+          "404": NOT_FOUND,
+          "409": error(
+            "O agendamento não está em um estado que permita cancelar",
+          ),
+          ...agentErrors,
         },
       },
     },

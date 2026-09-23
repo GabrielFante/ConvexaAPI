@@ -16,6 +16,10 @@ import { customerRoutes } from "../../modules/customer/customer.routes";
 import { timeBlockRoutes } from "../../modules/timeblock/timeblock.routes";
 import { appointmentRoutes } from "../../modules/appointment/appointment.routes";
 import { schedulingRoutes } from "../../modules/scheduling/scheduling.routes";
+import {
+  agentInternalRoutes,
+  agentRoutes,
+} from "../../modules/agent/agent.routes";
 import { healthRoutes } from "../health/health.routes";
 import { buildOpenApiDocument } from "./openapi.document";
 
@@ -35,6 +39,8 @@ const mounted: { prefix: string; router: Router }[] = [
   { prefix: "/api", router: timeBlockRoutes },
   { prefix: "/api", router: appointmentRoutes },
   { prefix: "/api", router: schedulingRoutes },
+  { prefix: "/internal", router: agentInternalRoutes },
+  { prefix: "/agent", router: agentRoutes },
 ];
 
 function toOpenApiPath(path: string): string {
