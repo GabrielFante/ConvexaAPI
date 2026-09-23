@@ -136,6 +136,7 @@ export const envSchema = z
       .trim()
       .min(1)
       .default("Convexa <onboarding@resend.dev>"),
+    DOCS_ENABLED: z.enum(["true", "false"], "Use true ou false").optional(),
   })
   .superRefine((data, ctx) => {
     const mailIssue = mailConfigIssue(data);
@@ -199,6 +200,16 @@ export const envSchema = z
   });
 
 export type Env = z.infer<typeof envSchema>;
+
+export function docsEnabled(
+  config: Pick<Env, "NODE_ENV" | "DOCS_ENABLED">,
+): boolean {
+  if (config.DOCS_ENABLED) {
+    return config.DOCS_ENABLED === "true";
+  }
+
+  return config.NODE_ENV !== "production";
+}
 
 export class InvalidEnvError extends Error {
   constructor(readonly issues: string[]) {
