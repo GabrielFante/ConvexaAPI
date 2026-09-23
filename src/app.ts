@@ -2,9 +2,10 @@ import express, { Router } from "express";
 import cors from "cors";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
-import { env } from "./shared/env";
+import { docsEnabled, env } from "./shared/env";
 import { AppError } from "./shared/errors/AppError";
 import { healthRoutes } from "./shared/health/health.routes";
+import { openApiRoutes } from "./shared/openapi/openapi.routes";
 import { authMiddleware } from "./shared/middleware/auth";
 import { internalKeyMiddleware } from "./shared/middleware/internal-key";
 import {
@@ -35,6 +36,10 @@ app.use(cors(env.CORS_ORIGINS.length > 0 ? { origin: env.CORS_ORIGINS } : {}));
 app.use(express.json({ limit: "100kb" }));
 
 app.use(healthRoutes);
+
+if (docsEnabled(env)) {
+  app.use(openApiRoutes);
+}
 
 const createRateLimit = (windowMs: number, limit: number, message: string) =>
   rateLimit({
