@@ -24,10 +24,6 @@ import { timeBlockRoutes } from "./modules/timeblock/timeblock.routes";
 import { appointmentRoutes } from "./modules/appointment/appointment.routes";
 import { schedulingRoutes } from "./modules/scheduling/scheduling.routes";
 import { agentInternalRoutes, agentRoutes } from "./modules/agent/agent.routes";
-import {
-  WHATSAPP_WEBHOOK_PATH,
-  whatsappInternalRoutes,
-} from "./modules/whatsapp/whatsapp.routes";
 import { quotaInternalRoutes, quotaRoutes } from "./modules/quota/quota.routes";
 import {
   errorHandler,
@@ -40,12 +36,7 @@ app.set("trust proxy", 1);
 
 app.use(helmet());
 app.use(cors(env.CORS_ORIGINS.length > 0 ? { origin: env.CORS_ORIGINS } : {}));
-const jsonBody = express.json({ limit: "100kb" });
-const rawBodyPath = `/internal${WHATSAPP_WEBHOOK_PATH}`;
-
-app.use((req, res, next) =>
-  req.path === rawBodyPath ? next() : jsonBody(req, res, next),
-);
+app.use(express.json({ limit: "100kb" }));
 
 app.use(healthRoutes);
 
@@ -92,7 +83,6 @@ app.use(
   internalKeyMiddleware,
   businessInternalRoutes,
   agentInternalRoutes,
-  whatsappInternalRoutes,
   quotaInternalRoutes,
 );
 app.use("/agent", agentRateLimit, agentAuthMiddleware, agentRoutes);

@@ -46,11 +46,6 @@ import {
   agentSessionSchema as agentSessionInputSchema,
 } from "../../modules/agent/agent.schema";
 import {
-  ackInboundSchema,
-  claimInboundSchema,
-  failInboundSchema,
-} from "../../modules/whatsapp/whatsapp.schema";
-import {
   consumeQuotaSchema,
   usageQuerySchema,
 } from "../../modules/quota/quota.schema";
@@ -69,8 +64,6 @@ import {
   customerSchema,
   employeeSchema,
   healthSchema,
-  inboundClaimSchema,
-  inboundFailResultSchema,
   messageUsageSchema,
   pageMetaSchema,
   profileSchema,
@@ -80,7 +73,6 @@ import {
   tenantByPhoneNumberIdSchema,
   timeBlockSchema,
   vacationSchema,
-  webhookReceiptSchema,
 } from "./openapi.schemas";
 
 type JsonSchema = Record<string, unknown>;
@@ -253,10 +245,6 @@ export function buildOpenApiDocument(serverUrl?: string) {
         description: "Tools do agente de IA (token de sessão do agente)",
       },
       {
-        name: "whatsapp",
-        description: "Webhook da Meta e fila de mensagens recebidas",
-      },
-      {
         name: "quota",
         description: "Cota mensal de mensagens enviadas",
       },
@@ -306,9 +294,6 @@ export function buildOpenApiDocument(serverUrl?: string) {
         AgentService: output(agentServiceSchema),
         AgentAvailability: output(agentAvailabilitySchema),
         AgentAppointment: output(agentAppointmentSchema),
-        WebhookReceipt: output(webhookReceiptSchema),
-        InboundClaim: output(inboundClaimSchema),
-        InboundFailResult: output(inboundFailResultSchema),
         MessageUsage: output(messageUsageSchema),
       },
     },
@@ -324,7 +309,6 @@ export function buildOpenApiDocument(serverUrl?: string) {
       ...appointmentPaths(),
       ...schedulingPaths(),
       ...agentPaths(),
-      ...whatsappPaths(),
       ...quotaPaths(),
     },
   };
@@ -475,147 +459,6 @@ function internalPaths() {
           "404": error("Nenhuma empresa usa este phone_number_id"),
           "429": RATE_LIMITED,
           "503": UNAVAILABLE,
-        },
-      },
-    },
-  };
-}
-
-function whatsappPaths() {
-  const internalKey = [{ internalKey: [] }];
-  const internalErrors = {
-    "401": error("Chave interna inválida"),
-    "429": RATE_LIMITED,
-    "503": UNAVAILABLE,
-  };
-  const leaseLost = error(
-    "INBOUND_LEASE_LOST — a reserva expirou ou a mensagem já foi finalizada. Não reprocesse: outra execução assumiu",
-  );
-
-  return {
-    "/internal/whatsapp/webhook": {
-      get: {
-        tags: ["internal", "whatsapp"],
-        summary: "Verificação do webhook pela Meta",
-        description:
-          "O n8n repassa a query que a Meta envia ao cadastrar o webhook. A API confere `hub.verify_token` contra `META_WEBHOOK_VERIFY_TOKEN` e devolve o `hub.challenge` em texto puro, que o n8n devolve à Meta",
-        operationId: "verifyWhatsappWebhook",
-        security: internalKey,
-        parameters: [
-          {
-            in: "query",
-            name: "hub.mode",
-            required: true,
-            schema: { type: "string", enum: ["subscribe"] },
-          },
-          {
-            in: "query",
-            name: "hub.verify_token",
-            required: true,
-            schema: { type: "string" },
-          },
-          {
-            in: "query",
-            name: "hub.challenge",
-            required: true,
-            schema: { type: "string" },
-          },
-        ],
-        responses: {
-          "200": {
-            description: "O hub.challenge, sem alteração",
-            content: { "text/plain": { schema: { type: "string" } } },
-          },
-          "400": VALIDATION,
-          "403": error("INVALID_VERIFY_TOKEN — token diferente do configurado"),
-          ...internalErrors,
-        },
-      },
-      post: {
-        tags: ["internal", "whatsapp"],
-        summary: "Recebe o webhook da Meta repassado pelo n8n",
-        description:
-          "O n8n repassa **o corpo bruto, byte a byte**, e o header `X-Hub-Signature-256` como vieram da Meta. A API valida o HMAC-SHA256 com o App Secret da empresa dona do `phone_number_id`, ignora `statuses[]`, descarta duplicata pelo id da mensagem (`wamid`) e grava na fila. O n8n só deve responder 200 à Meta depois do 200 daqui — qualquer outro status faz a Meta reentregar, e a reentrega é segura. Nada é processado aqui: consuma a fila com `POST /internal/inbound-messages/claim`",
-        operationId: "receiveWhatsappWebhook",
-        security: internalKey,
-        parameters: [
-          {
-            in: "header",
-            name: "X-Hub-Signature-256",
-            required: true,
-            description: "sha256=<hex> calculado pela Meta sobre o corpo bruto",
-            schema: { type: "string" },
-          },
-        ],
-        requestBody: {
-          required: true,
-          description: "O corpo exatamente como a Meta enviou",
-          content: { "application/json": { schema: { type: "object" } } },
-        },
-        responses: {
-          "200": ok("Mensagens enfileiradas", ref("WebhookReceipt")),
-          "400": error(
-            "INVALID_PAYLOAD — corpo ausente, não JSON ou fora do formato da Meta",
-          ),
-          "401": error(
-            "Chave interna inválida, ou INVALID_SIGNATURE — assinatura ausente ou que não confere",
-          ),
-          "413": error("Corpo acima de 512kb"),
-          "429": RATE_LIMITED,
-          "503": UNAVAILABLE,
-        },
-      },
-    },
-    "/internal/inbound-messages/claim": {
-      post: {
-        tags: ["internal", "whatsapp"],
-        summary: "Reserva mensagens da fila para processar",
-        description:
-          "Devolve até `limit` mensagens pendentes, reservadas por `leaseSeconds`. Nunca entrega duas mensagens do mesmo cliente ao mesmo tempo, nem uma mensagem antes da anterior dele terminar: a conversa fica em ordem. Para cada uma, chame `POST /internal/agent-sessions` com `phoneNumberId`, `phone` e `contactName`, rode o agente e finalize com `ack` ou `fail` passando o `leaseId`. Reserva vencida sem resposta volta para a fila e conta como tentativa.",
-        operationId: "claimInboundMessages",
-        security: internalKey,
-        requestBody: { required: false, ...json(input(claimInboundSchema)) },
-        responses: {
-          "200": ok(
-            "Mensagens reservadas (pode vir vazio)",
-            ref("InboundClaim"),
-          ),
-          "400": VALIDATION,
-          ...internalErrors,
-        },
-      },
-    },
-    "/internal/inbound-messages/{id}/ack": {
-      post: {
-        tags: ["internal", "whatsapp"],
-        summary: "Confirma que a mensagem foi processada",
-        operationId: "ackInboundMessage",
-        security: internalKey,
-        parameters: [idPath],
-        requestBody: body(ackInboundSchema),
-        responses: {
-          "204": { description: "Mensagem finalizada" },
-          "400": VALIDATION,
-          "409": leaseLost,
-          ...internalErrors,
-        },
-      },
-    },
-    "/internal/inbound-messages/{id}/fail": {
-      post: {
-        tags: ["internal", "whatsapp"],
-        summary: "Devolve a mensagem para a fila após uma falha",
-        description:
-          "A API decide o retry: espera de 30s dobrando a cada tentativa, até 15min, e no máximo 5 tentativas. Depois disso, ou com `retryable: false`, a mensagem vai para dead-letter (`DEAD`) e não volta mais",
-        operationId: "failInboundMessage",
-        security: internalKey,
-        parameters: [idPath],
-        requestBody: body(failInboundSchema),
-        responses: {
-          "200": ok("Destino da mensagem", ref("InboundFailResult")),
-          "400": VALIDATION,
-          "409": leaseLost,
-          ...internalErrors,
         },
       },
     },
