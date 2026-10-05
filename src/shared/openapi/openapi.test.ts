@@ -20,6 +20,7 @@ import {
   agentInternalRoutes,
   agentRoutes,
 } from "../../modules/agent/agent.routes";
+import { whatsappInternalRoutes } from "../../modules/whatsapp/whatsapp.routes";
 import { healthRoutes } from "../health/health.routes";
 import { buildOpenApiDocument } from "./openapi.document";
 
@@ -41,6 +42,7 @@ const mounted: { prefix: string; router: Router }[] = [
   { prefix: "/api", router: schedulingRoutes },
   { prefix: "/internal", router: agentInternalRoutes },
   { prefix: "/agent", router: agentRoutes },
+  { prefix: "/internal", router: whatsappInternalRoutes },
 ];
 
 function toOpenApiPath(path: string): string {

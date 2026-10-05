@@ -33,6 +33,13 @@ enum UserRole {
   STAFF
 }
 
+enum InboundMessageStatus {
+  PENDING
+  PROCESSING
+  DONE
+  DEAD
+}
+
 model Business {
   id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name                String
@@ -57,6 +64,7 @@ model Business {
   customers    Customer[]
   appointments Appointment[]
   users        User[]
+  inbound      InboundMessage[]
 }
 
 model BusinessIntegration {
@@ -250,6 +258,33 @@ model RefreshToken {
 
   @@index([userId])
   @@index([businessId])
+}
+
+model InboundMessage {
+  id            String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  businessId    String               @db.Uuid
+  business      Business             @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  waMessageId   String               @unique
+  phoneNumberId String
+  phone         String
+  contactName   String?
+  type          String
+  text          String?
+  mediaId       String?
+  payload       Json
+  sentAt        DateTime             @db.Timestamptz(3)
+  status        InboundMessageStatus @default(PENDING)
+  attempts      Int                  @default(0)
+  availableAt   DateTime             @default(now()) @db.Timestamptz(3)
+  leaseId       String?              @db.Uuid
+  lockedUntil   DateTime?            @db.Timestamptz(3)
+  lastError     String?
+  processedAt   DateTime?            @db.Timestamptz(3)
+  createdAt     DateTime             @default(now()) @db.Timestamptz(3)
+  updatedAt     DateTime             @default(now()) @updatedAt @db.Timestamptz(3)
+
+  @@index([status, availableAt])
+  @@index([businessId, phone, sentAt])
 }
 
 model PasswordResetToken {
