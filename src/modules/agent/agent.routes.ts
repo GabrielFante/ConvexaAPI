@@ -12,3 +12,4 @@ agentRoutes.get("/availability", agentController.availability);
 agentRoutes.get("/appointments", agentController.listAppointments);
 agentRoutes.post("/appointments", agentController.book);
 agentRoutes.post("/appointments/:id/cancel", agentController.cancel);
+agentRoutes.post("/appointments/:id/reschedule", agentController.reschedule);

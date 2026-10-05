@@ -10,6 +10,10 @@ export const apiErrorSchema = z.object({
   issues: z
     .array(z.object({ field: z.string(), message: z.string() }))
     .optional(),
+  requestId: z
+    .string()
+    .optional()
+    .describe("Só no erro 500: o mesmo valor do header X-Request-Id"),
 });
 
 export const pageMetaSchema = z.object({
