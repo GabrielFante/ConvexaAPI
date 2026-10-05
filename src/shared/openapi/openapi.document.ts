@@ -43,6 +43,7 @@ import { availabilityQuerySchema } from "../../modules/scheduling/scheduling.sch
 import {
   agentAvailabilitySchema as agentAvailabilityQuerySchema,
   agentBookSchema,
+  agentRescheduleSchema,
   agentSessionSchema as agentSessionInputSchema,
 } from "../../modules/agent/agent.schema";
 import {
@@ -215,6 +216,36 @@ Toda falha responde com o mesmo formato:
 \`\`\`
 
 \`issues[]\` só aparece em erro de validação. O \`409 SLOT_CONFLICT\` significa que o horário foi ocupado entre a consulta e a gravação — reconsulte a disponibilidade e ofereça outro horário.
+
+## Rastreamento
+
+Mande \`X-Request-Id\` (até 128 caracteres: letras, números, \`.\`, \`_\`, \`:\` e \`-\`) e a API devolve o mesmo valor no header da resposta e grava em todo log da requisição. Sem o header, ou com valor fora do formato, a API gera um UUID. O erro 500 traz o id também no corpo, em \`requestId\`. No n8n, use o id da execução para cruzar os dois lados.
+
+## Fluxo do n8n
+
+A API não recebe nem envia mensagens e não fala com a IA. Para cada mensagem do WhatsApp, o n8n:
+
+1. Valida o webhook da Meta (assinatura, duplicata, \`statuses[]\`) — tudo no n8n.
+2. \`POST /internal/agent-sessions\` com \`phoneNumberId\`, telefone e nome de quem escreveu. Guarda o \`token\` (5 minutos) e usa \`now\` para a IA entender "hoje" e "amanhã".
+3. Expõe à IA as rotas \`/agent/*\` como tools, sempre com o token da sessão:
+   - \`GET /agent/services\` — o que a barbearia oferece
+   - \`GET /agent/availability\` — horários livres (\`limit\` default 3; não aumente sem motivo, a Meta cobra por mensagem)
+   - \`GET /agent/appointments\` — próximos agendamentos do cliente
+   - \`POST /agent/appointments\` — agendar
+   - \`POST /agent/appointments/{id}/reschedule\` — remarcar (nunca cancelar + agendar)
+   - \`POST /agent/appointments/{id}/cancel\` — cancelar
+4. Antes de responder ao cliente, \`POST /internal/messages/quota\`. Com **402**, não envie.
+5. \`GET /internal/integrations/by-phone-number-id/{phoneNumberId}\` e envia à Meta com o \`metaAccessToken\`. Não grave o token no n8n nem deixe aparecer no log da execução.
+
+Como reagir:
+
+| Resposta | O que fazer |
+|---|---|
+| \`401\` em \`/agent/*\` | O token expirou: abra outra sessão e repita a chamada |
+| \`409\` ao agendar ou remarcar | Horário ocupado: reconsulte \`/agent/availability\` e ofereça outro |
+| \`404\` em \`agent-sessions\` ou \`integrations\` | Número sem empresa ou sem token cadastrado: não responda ao cliente e alerte a equipe |
+| \`402\` em \`quota\` | Limite do mês atingido: não envie |
+| \`5xx\` | Repita com espera; informe o \`requestId\` ao investigar |
 
 ## Paginação
 
@@ -1170,6 +1201,26 @@ function agentPaths() {
           "404": NOT_FOUND,
           "409": error(
             "O agendamento não está em um estado que permita cancelar",
+          ),
+          ...agentErrors,
+        },
+      },
+    },
+    "/agent/appointments/{id}/reschedule": {
+      post: {
+        tags: ["agent"],
+        summary: "Reagenda um agendamento do cliente da conversa",
+        description:
+          "Move o agendamento numa única operação, sem soltar o horário antigo antes de garantir o novo — não use cancelar + agendar para isso. Mantém serviço, preço e duração congelados; sem `employeeId`, fica com o mesmo funcionário. Agendamento de outro cliente responde 404. Responde 409 se o novo horário foi ocupado — reconsulte `/agent/availability`",
+        operationId: "agentRescheduleAppointment",
+        security: agentSecurity,
+        parameters: [idPath],
+        requestBody: body(agentRescheduleSchema),
+        responses: {
+          "200": ok("Agendamento reagendado", ref("AgentAppointment")),
+          "404": NOT_FOUND,
+          "409": error(
+            "Horário ocupado ou agendamento em estado que não permite reagendar",
           ),
           ...agentErrors,
         },
