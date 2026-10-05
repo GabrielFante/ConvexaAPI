@@ -270,6 +270,7 @@ export const inboundClaimSchema = z.object({
       text: z.string().nullable(),
       mediaId: z.string().nullable(),
       sentAt: instant,
+      conversationId: id,
       attempts: z.int(),
     }),
   ),

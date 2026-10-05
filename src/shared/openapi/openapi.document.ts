@@ -560,7 +560,7 @@ function whatsappPaths() {
         tags: ["internal", "whatsapp"],
         summary: "Reserva mensagens da fila para processar",
         description:
-          "Devolve até `limit` mensagens pendentes, reservadas por `leaseSeconds`. Nunca entrega duas mensagens do mesmo cliente ao mesmo tempo, nem uma mensagem antes da anterior dele terminar: a conversa fica em ordem. Para cada uma, chame `POST /internal/agent-sessions` com `phoneNumberId`, `phone` e `contactName`, rode o agente e finalize com `ack` ou `fail` passando o `leaseId`. Reserva vencida sem resposta volta para a fila e conta como tentativa",
+          "Devolve até `limit` mensagens pendentes, reservadas por `leaseSeconds`. Nunca entrega duas mensagens do mesmo cliente ao mesmo tempo, nem uma mensagem antes da anterior dele terminar: a conversa fica em ordem. Para cada uma, chame `POST /internal/agent-sessions` com `phoneNumberId`, `phone` e `contactName`, rode o agente e finalize com `ack` ou `fail` passando o `leaseId`. Reserva vencida sem resposta volta para a fila e conta como tentativa. O `conversationId` é a chave da memória de chat no n8n: continua o mesmo enquanto o cliente escreve com menos de 30 minutos de intervalo e muda depois disso. O n8n não calcula expiração — só usa a chave",
         operationId: "claimInboundMessages",
         security: internalKey,
         requestBody: { required: false, ...json(input(claimInboundSchema)) },

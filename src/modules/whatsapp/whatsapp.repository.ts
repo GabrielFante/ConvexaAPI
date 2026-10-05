@@ -25,6 +25,7 @@ export type ClaimedInboundMessage = {
   text: string | null;
   mediaId: string | null;
   sentAt: Date;
+  conversationId: string;
   attempts: number;
 };
 
@@ -32,6 +33,7 @@ export type ClaimOptions = {
   limit: number;
   leaseSeconds: number;
   maxAttempts: number;
+  conversationIdleMinutes: number;
 };
 
 const LEASE_EXPIRED_ERROR = "Prazo de processamento expirado sem confirmação";
@@ -69,7 +71,12 @@ export const whatsappRepository = {
     return count;
   },
 
-  claim({ limit, leaseSeconds, maxAttempts }: ClaimOptions) {
+  claim({
+    limit,
+    leaseSeconds,
+    maxAttempts,
+    conversationIdleMinutes,
+  }: ClaimOptions) {
     return prisma.$transaction(async (tx) => {
       await tx.$executeRaw`
         UPDATE "InboundMessage"
@@ -87,6 +94,20 @@ export const whatsappRepository = {
         UPDATE "InboundMessage" AS m
            SET "status" = 'PROCESSING',
                "attempts" = m."attempts" + 1,
+               "conversationId" = COALESCE(
+                 m."conversationId",
+                 (SELECT p."conversationId"
+                    FROM "InboundMessage" AS p
+                   WHERE p."businessId" = m."businessId"
+                     AND p."phone" = m."phone"
+                     AND p."conversationId" IS NOT NULL
+                     AND (p."sentAt", p."createdAt", p."id")
+                       < (m."sentAt", m."createdAt", m."id")
+                     AND p."sentAt" >= m."sentAt"
+                           - ${conversationIdleMinutes}::int * interval '1 minute'
+                   ORDER BY p."sentAt" DESC, p."createdAt" DESC, p."id" DESC
+                   LIMIT 1),
+                 gen_random_uuid()),
                "leaseId" = gen_random_uuid(),
                "lockedUntil" = now() + ${leaseSeconds}::int * interval '1 second',
                "updatedAt" = now()
@@ -108,7 +129,7 @@ export const whatsappRepository = {
                   FOR UPDATE SKIP LOCKED)
      RETURNING m."id", m."leaseId", m."businessId", m."phoneNumberId",
                m."phone", m."contactName", m."type", m."text", m."mediaId",
-               m."sentAt", m."attempts"`;
+               m."sentAt", m."conversationId", m."attempts"`;
 
       return claimed.sort(
         (a, b) =>
