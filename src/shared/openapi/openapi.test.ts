@@ -20,7 +20,6 @@ import {
   agentInternalRoutes,
   agentRoutes,
 } from "../../modules/agent/agent.routes";
-import { whatsappInternalRoutes } from "../../modules/whatsapp/whatsapp.routes";
 import {
   quotaInternalRoutes,
   quotaRoutes,
@@ -46,7 +45,6 @@ const mounted: { prefix: string; router: Router }[] = [
   { prefix: "/api", router: schedulingRoutes },
   { prefix: "/internal", router: agentInternalRoutes },
   { prefix: "/agent", router: agentRoutes },
-  { prefix: "/internal", router: whatsappInternalRoutes },
   { prefix: "/internal", router: quotaInternalRoutes },
   { prefix: "/api", router: quotaRoutes },
 ];
