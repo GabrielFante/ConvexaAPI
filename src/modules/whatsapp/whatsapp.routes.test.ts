@@ -413,6 +413,36 @@ describe("POST /internal/inbound-messages/claim", () => {
       limit: 1,
       leaseSeconds: 120,
       maxAttempts: INBOUND_MAX_ATTEMPTS,
+      conversationIdleMinutes: 30,
+    });
+  });
+
+  it("entrega a chave da conversa junto com a mensagem", async () => {
+    const conversationId = "abababab-1111-4111-8111-111111111111";
+    mocks.repository.claim.mockResolvedValue([
+      {
+        id: MESSAGE_ID,
+        leaseId: LEASE_ID,
+        businessId: TENANT_A,
+        phoneNumberId: PHONE_NUMBER_A,
+        phone: "+5511999999999",
+        contactName: "João",
+        type: "text",
+        text: "oi",
+        mediaId: null,
+        sentAt: new Date("2026-10-05T12:00:00.000Z"),
+        conversationId,
+        attempts: 1,
+      },
+    ]);
+
+    const response = await claim();
+
+    expect(response.body.messages[0]).toMatchObject({
+      id: MESSAGE_ID,
+      leaseId: LEASE_ID,
+      conversationId,
+      sentAt: "2026-10-05T12:00:00.000Z",
     });
   });
 

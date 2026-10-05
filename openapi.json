@@ -1459,6 +1459,11 @@
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
                 },
+                "conversationId": {
+                  "type": "string",
+                  "format": "uuid",
+                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                },
                 "attempts": {
                   "type": "integer",
                   "minimum": -9007199254740991,
@@ -1476,6 +1481,7 @@
                 "text",
                 "mediaId",
                 "sentAt",
+                "conversationId",
                 "attempts"
               ],
               "additionalProperties": false
@@ -7046,7 +7052,7 @@
           "whatsapp"
         ],
         "summary": "Reserva mensagens da fila para processar",
-        "description": "Devolve até `limit` mensagens pendentes, reservadas por `leaseSeconds`. Nunca entrega duas mensagens do mesmo cliente ao mesmo tempo, nem uma mensagem antes da anterior dele terminar: a conversa fica em ordem. Para cada uma, chame `POST /internal/agent-sessions` com `phoneNumberId`, `phone` e `contactName`, rode o agente e finalize com `ack` ou `fail` passando o `leaseId`. Reserva vencida sem resposta volta para a fila e conta como tentativa",
+        "description": "Devolve até `limit` mensagens pendentes, reservadas por `leaseSeconds`. Nunca entrega duas mensagens do mesmo cliente ao mesmo tempo, nem uma mensagem antes da anterior dele terminar: a conversa fica em ordem. Para cada uma, chame `POST /internal/agent-sessions` com `phoneNumberId`, `phone` e `contactName`, rode o agente e finalize com `ack` ou `fail` passando o `leaseId`. Reserva vencida sem resposta volta para a fila e conta como tentativa. O `conversationId` é a chave da memória de chat no n8n: continua o mesmo enquanto o cliente escreve com menos de 30 minutos de intervalo e muda depois disso. O n8n não calcula expiração — só usa a chave",
         "operationId": "claimInboundMessages",
         "security": [
           {

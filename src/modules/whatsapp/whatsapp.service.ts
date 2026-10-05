@@ -23,6 +23,7 @@ import {
 
 export const INBOUND_MAX_ATTEMPTS = 5;
 export const INBOUND_LEASE_SECONDS = 120;
+export const CONVERSATION_IDLE_MINUTES = 30;
 const RETRY_BASE_SECONDS = 30;
 const RETRY_MAX_SECONDS = 15 * 60;
 const MAX_CONTACT_NAME_LENGTH = 256;
@@ -287,6 +288,7 @@ export const whatsappService = {
       limit,
       leaseSeconds: INBOUND_LEASE_SECONDS,
       maxAttempts: INBOUND_MAX_ATTEMPTS,
+      conversationIdleMinutes: CONVERSATION_IDLE_MINUTES,
     });
 
     return { leaseSeconds: INBOUND_LEASE_SECONDS, messages };
