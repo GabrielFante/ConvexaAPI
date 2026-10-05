@@ -137,6 +137,11 @@ export const envSchema = z
       .min(1)
       .default("Convexa <onboarding@resend.dev>"),
     DOCS_ENABLED: z.enum(["true", "false"], "Use true ou false").optional(),
+    META_WEBHOOK_VERIFY_TOKEN: z
+      .string()
+      .trim()
+      .min(16, "META_WEBHOOK_VERIFY_TOKEN deve ter no mínimo 16 caracteres")
+      .optional(),
   })
   .superRefine((data, ctx) => {
     const mailIssue = mailConfigIssue(data);

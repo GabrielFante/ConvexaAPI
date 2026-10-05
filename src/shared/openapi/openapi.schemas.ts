@@ -249,3 +249,34 @@ export const agentAppointmentSchema = z.object({
   service: z.object({ id, name: z.string() }),
   employee: z.object({ id, name: z.string() }),
 });
+
+export const webhookReceiptSchema = z.object({
+  accepted: z.int(),
+  duplicates: z.int(),
+  ignored: z.int(),
+});
+
+export const inboundClaimSchema = z.object({
+  leaseSeconds: z.int(),
+  messages: z.array(
+    z.object({
+      id,
+      leaseId: id,
+      businessId: id,
+      phoneNumberId: z.string(),
+      phone: z.string(),
+      contactName: z.string().nullable(),
+      type: z.string(),
+      text: z.string().nullable(),
+      mediaId: z.string().nullable(),
+      sentAt: instant,
+      attempts: z.int(),
+    }),
+  ),
+});
+
+export const inboundFailResultSchema = z.object({
+  status: z.enum(["PENDING", "DEAD"]),
+  attempts: z.int(),
+  retryInSeconds: z.int().optional(),
+});
