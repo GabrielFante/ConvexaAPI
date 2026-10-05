@@ -5,6 +5,7 @@ import { AppError } from "../errors/AppError";
 import {
   CHECK_VIOLATION,
   EXCLUSION_VIOLATION,
+  QUERY_CANCELED,
   hasSqlState,
   SERIALIZATION_FAILURE,
 } from "../database/sqlstate";
@@ -64,6 +65,17 @@ export const notFoundHandler: RequestHandler = (req, res) => {
 
 export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
   if (err instanceof AppError) {
+    if (err.statusCode >= 500) {
+      logger.error("Falha interna sinalizada pela aplicacao", err);
+
+      res.status(err.statusCode).json({
+        status: "error",
+        code: "INTERNAL_ERROR",
+        message: "Erro interno do servidor",
+      });
+      return;
+    }
+
     res.status(err.statusCode).json({
       status: "error",
       ...(err.code ? { code: err.code } : {}),
@@ -115,6 +127,17 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
       status: "error",
       code: "SLOT_CONFLICT",
       message: SLOT_TAKEN_MESSAGE,
+    });
+    return;
+  }
+
+  if (hasSqlState(err, QUERY_CANCELED)) {
+    logger.error("Query cancelada por tempo limite no banco", err);
+
+    res.status(503).json({
+      status: "error",
+      code: "DATABASE_TIMEOUT",
+      message: "O banco de dados demorou para responder. Tente novamente",
     });
     return;
   }

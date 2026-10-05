@@ -1,9 +1,9 @@
 import type { Request, Response } from "express";
-import { paginationQuerySchema } from "../../shared/validation/pagination";
 import { idParam } from "../../shared/validation/common";
 import { employeeService } from "./employee.service";
 import {
   createEmployeeSchema,
+  listEmployeeQuerySchema,
   setEmployeeHoursSchema,
   setEmployeeServicesSchema,
   updateEmployeeSchema,
@@ -11,8 +11,8 @@ import {
 
 export const employeeController = {
   async list(req: Request, res: Response) {
-    const pagination = paginationQuerySchema.parse(req.query);
-    const employees = await employeeService.list(pagination);
+    const query = listEmployeeQuerySchema.parse(req.query);
+    const employees = await employeeService.list(query);
     res.json(employees);
   },
 

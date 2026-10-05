@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { envSchema } from "./env";
+import { InvalidEnvError, envSchema, loadEnv } from "./env";
 
 const validUrl = "postgresql://user:pass@localhost:5432/db";
 const secret = "a".repeat(32);
@@ -284,5 +284,93 @@ describe("envSchema", () => {
     const result = envSchema.safeParse({ ...baseEnv, APP_URL: "nao-e-url" });
 
     expect(result.success).toBe(false);
+  });
+});
+
+describe("pool do banco", () => {
+  it("aplica os defaults dimensionados para o piloto", () => {
+    const result = envSchema.safeParse(baseEnv);
+
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+
+    expect(result.data.DATABASE_POOL_MAX).toBe(5);
+    expect(result.data.DATABASE_POOL_CONNECTION_TIMEOUT_MS).toBe(2000);
+    expect(result.data.DATABASE_STATEMENT_TIMEOUT_MS).toBe(3000);
+  });
+
+  it("converte os valores recebidos como string", () => {
+    const result = envSchema.safeParse({
+      ...baseEnv,
+      DATABASE_POOL_MAX: "8",
+    });
+
+    expect(result.success && result.data.DATABASE_POOL_MAX).toBe(8);
+  });
+
+  it("recusa statement_timeout que nao corta antes da transacao do Prisma", () => {
+    expect(
+      issuePaths({ ...baseEnv, DATABASE_STATEMENT_TIMEOUT_MS: "5000" }),
+    ).toEqual(["DATABASE_STATEMENT_TIMEOUT_MS"]);
+  });
+
+  it("recusa pool grande demais para transacoes Serializable", () => {
+    expect(issuePaths({ ...baseEnv, DATABASE_POOL_MAX: "50" })).toEqual([
+      "DATABASE_POOL_MAX",
+    ]);
+  });
+
+  it("recusa pool de uma conexao so em producao", () => {
+    expect(issuePaths({ ...prodEnv, DATABASE_POOL_MAX: "1" })).toEqual([
+      "DATABASE_POOL_MAX",
+    ]);
+  });
+
+  it("aceita pool de uma conexao so fora de producao", () => {
+    expect(issuePaths({ ...baseEnv, DATABASE_POOL_MAX: "1" })).toEqual([]);
+  });
+});
+
+describe("loadEnv", () => {
+  it("devolve a env validada a partir da fonte recebida", () => {
+    const carregada = loadEnv({ ...baseEnv } as NodeJS.ProcessEnv);
+
+    expect(carregada.PORT).toBe(3000);
+    expect(carregada.DATABASE_URL).toBe(validUrl);
+  });
+
+  it("lanca InvalidEnvError em vez de derrubar o processo", () => {
+    expect(() => loadEnv({} as NodeJS.ProcessEnv)).toThrow(InvalidEnvError);
+  });
+
+  it("junta todos os problemas numa mensagem legivel", () => {
+    let capturado: InvalidEnvError | undefined;
+
+    try {
+      loadEnv({ ...baseEnv, JWT_SECRET: "curto" } as NodeJS.ProcessEnv);
+    } catch (error) {
+      capturado = error as InvalidEnvError;
+    }
+
+    expect(capturado?.issues).toHaveLength(1);
+    expect(capturado?.message).toContain("JWT_SECRET");
+    expect(capturado?.message).toContain("Variáveis de ambiente inválidas");
+  });
+
+  it("nao repassa o valor do segredo na mensagem", () => {
+    const segredoFraco = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    try {
+      loadEnv({
+        ...baseEnv,
+        NODE_ENV: "production",
+        CORS_ORIGINS: "https://painel.convexa.app",
+        RESEND_API_KEY: "re_chave",
+        MAIL_DRIVER: "resend",
+        JWT_SECRET: segredoFraco,
+      } as NodeJS.ProcessEnv);
+    } catch (error) {
+      expect((error as InvalidEnvError).message).not.toContain(segredoFraco);
+    }
   });
 });
