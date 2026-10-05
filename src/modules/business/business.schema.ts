@@ -25,7 +25,6 @@ export const createBusinessSchema = z.object({
   metaWabaId: z.string().trim().min(1).optional(),
   metaAccessToken: z.string().trim().min(1).optional(),
   metaAppSecret: z.string().trim().min(1).optional(),
-  aiSystemPrompt: z.string().trim().min(1).optional(),
   slotIntervalMinutes: z
     .number()
     .int()
