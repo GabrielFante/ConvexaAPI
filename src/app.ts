@@ -28,6 +28,7 @@ import {
   WHATSAPP_WEBHOOK_PATH,
   whatsappInternalRoutes,
 } from "./modules/whatsapp/whatsapp.routes";
+import { quotaInternalRoutes, quotaRoutes } from "./modules/quota/quota.routes";
 import {
   errorHandler,
   notFoundHandler,
@@ -92,6 +93,7 @@ app.use(
   businessInternalRoutes,
   agentInternalRoutes,
   whatsappInternalRoutes,
+  quotaInternalRoutes,
 );
 app.use("/agent", agentRateLimit, agentAuthMiddleware, agentRoutes);
 
@@ -107,6 +109,7 @@ apiRoutes.use(customerRoutes);
 apiRoutes.use(timeBlockRoutes);
 apiRoutes.use(appointmentRoutes);
 apiRoutes.use(schedulingRoutes);
+apiRoutes.use(quotaRoutes);
 
 app.use("/api", apiRoutes);
 

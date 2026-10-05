@@ -50,6 +50,10 @@ import {
   claimInboundSchema,
   failInboundSchema,
 } from "../../modules/whatsapp/whatsapp.schema";
+import {
+  consumeQuotaSchema,
+  usageQuerySchema,
+} from "../../modules/quota/quota.schema";
 import { paginationQuerySchema } from "../validation/pagination";
 import {
   agentAppointmentSchema,
@@ -67,6 +71,7 @@ import {
   healthSchema,
   inboundClaimSchema,
   inboundFailResultSchema,
+  messageUsageSchema,
   pageMetaSchema,
   profileSchema,
   readinessSchema,
@@ -251,6 +256,10 @@ export function buildOpenApiDocument(serverUrl?: string) {
         name: "whatsapp",
         description: "Webhook da Meta e fila de mensagens recebidas",
       },
+      {
+        name: "quota",
+        description: "Cota mensal de mensagens enviadas",
+      },
     ],
     security: [{ bearerAuth: [] }],
     components: {
@@ -300,6 +309,7 @@ export function buildOpenApiDocument(serverUrl?: string) {
         WebhookReceipt: output(webhookReceiptSchema),
         InboundClaim: output(inboundClaimSchema),
         InboundFailResult: output(inboundFailResultSchema),
+        MessageUsage: output(messageUsageSchema),
       },
     },
     paths: {
@@ -315,6 +325,7 @@ export function buildOpenApiDocument(serverUrl?: string) {
       ...schedulingPaths(),
       ...agentPaths(),
       ...whatsappPaths(),
+      ...quotaPaths(),
     },
   };
 }
@@ -560,7 +571,7 @@ function whatsappPaths() {
         tags: ["internal", "whatsapp"],
         summary: "Reserva mensagens da fila para processar",
         description:
-          "Devolve até `limit` mensagens pendentes, reservadas por `leaseSeconds`. Nunca entrega duas mensagens do mesmo cliente ao mesmo tempo, nem uma mensagem antes da anterior dele terminar: a conversa fica em ordem. Para cada uma, chame `POST /internal/agent-sessions` com `phoneNumberId`, `phone` e `contactName`, rode o agente e finalize com `ack` ou `fail` passando o `leaseId`. Reserva vencida sem resposta volta para a fila e conta como tentativa. O `conversationId` é a chave da memória de chat no n8n: continua o mesmo enquanto o cliente escreve com menos de 30 minutos de intervalo e muda depois disso. O n8n não calcula expiração — só usa a chave",
+          "Devolve até `limit` mensagens pendentes, reservadas por `leaseSeconds`. Nunca entrega duas mensagens do mesmo cliente ao mesmo tempo, nem uma mensagem antes da anterior dele terminar: a conversa fica em ordem. Para cada uma, chame `POST /internal/agent-sessions` com `phoneNumberId`, `phone` e `contactName`, rode o agente e finalize com `ack` ou `fail` passando o `leaseId`. Reserva vencida sem resposta volta para a fila e conta como tentativa.",
         operationId: "claimInboundMessages",
         security: internalKey,
         requestBody: { required: false, ...json(input(claimInboundSchema)) },
@@ -605,6 +616,47 @@ function whatsappPaths() {
           "400": VALIDATION,
           "409": leaseLost,
           ...internalErrors,
+        },
+      },
+    },
+  };
+}
+
+function quotaPaths() {
+  return {
+    "/internal/messages/quota": {
+      post: {
+        tags: ["internal", "quota"],
+        summary: "Consome a cota antes de enviar mensagem",
+        description:
+          "O n8n chama **antes de cada envio** à Meta. A empresa sai do `phoneNumberId`. A API soma `count` ao uso do mês (no fuso da empresa) de forma atômica e só se couber no `monthlyMessageLimit` — duas chamadas simultâneas nunca passam juntas do limite. Sem limite cadastrado, só conta. Com 402, **não envie**. A cota conta tentativas: falha no envio à Meta não devolve a unidade. A API não recebe nem guarda o texto",
+        operationId: "consumeMessageQuota",
+        security: [{ internalKey: [] }],
+        requestBody: body(consumeQuotaSchema),
+        responses: {
+          "200": ok("Cota consumida", ref("MessageUsage")),
+          "400": VALIDATION,
+          "401": error("Chave interna inválida"),
+          "402": error(
+            "QUOTA_EXCEEDED — limite mensal atingido; nada foi contado",
+          ),
+          "404": error("Nenhuma empresa usa este phone_number_id"),
+          "429": RATE_LIMITED,
+          "503": UNAVAILABLE,
+        },
+      },
+    },
+    "/api/messages/usage": {
+      get: {
+        tags: ["quota"],
+        summary: "Uso de mensagens no mês",
+        description:
+          "Sem `month`, usa o mês corrente no fuso da empresa. `limit` e `remaining` nulos significam sem limite",
+        operationId: "getMessageUsage",
+        parameters: queryParams(usageQuerySchema),
+        responses: {
+          "200": ok("Uso do mês", ref("MessageUsage")),
+          ...withNotFound,
         },
       },
     },

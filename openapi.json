@@ -59,6 +59,10 @@
     {
       "name": "whatsapp",
       "description": "Webhook da Meta e fila de mensagens recebidas"
+    },
+    {
+      "name": "quota",
+      "description": "Cota mensal de mensagens enviadas"
     }
   ],
   "security": [
@@ -1459,11 +1463,6 @@
                   "format": "date-time",
                   "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z))$"
                 },
-                "conversationId": {
-                  "type": "string",
-                  "format": "uuid",
-                  "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
-                },
                 "attempts": {
                   "type": "integer",
                   "minimum": -9007199254740991,
@@ -1481,7 +1480,6 @@
                 "text",
                 "mediaId",
                 "sentAt",
-                "conversationId",
                 "attempts"
               ],
               "additionalProperties": false
@@ -1518,6 +1516,38 @@
         "required": [
           "status",
           "attempts"
+        ],
+        "additionalProperties": false
+      },
+      "MessageUsage": {
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "sent": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "nullable": true,
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "remaining": {
+            "nullable": true,
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "month",
+          "sent",
+          "limit",
+          "remaining"
         ],
         "additionalProperties": false
       }
@@ -7052,7 +7082,7 @@
           "whatsapp"
         ],
         "summary": "Reserva mensagens da fila para processar",
-        "description": "Devolve até `limit` mensagens pendentes, reservadas por `leaseSeconds`. Nunca entrega duas mensagens do mesmo cliente ao mesmo tempo, nem uma mensagem antes da anterior dele terminar: a conversa fica em ordem. Para cada uma, chame `POST /internal/agent-sessions` com `phoneNumberId`, `phone` e `contactName`, rode o agente e finalize com `ack` ou `fail` passando o `leaseId`. Reserva vencida sem resposta volta para a fila e conta como tentativa. O `conversationId` é a chave da memória de chat no n8n: continua o mesmo enquanto o cliente escreve com menos de 30 minutos de intervalo e muda depois disso. O n8n não calcula expiração — só usa a chave",
+        "description": "Devolve até `limit` mensagens pendentes, reservadas por `leaseSeconds`. Nunca entrega duas mensagens do mesmo cliente ao mesmo tempo, nem uma mensagem antes da anterior dele terminar: a conversa fica em ordem. Para cada uma, chame `POST /internal/agent-sessions` com `phoneNumberId`, `phone` e `contactName`, rode o agente e finalize com `ack` ou `fail` passando o `leaseId`. Reserva vencida sem resposta volta para a fila e conta como tentativa.",
         "operationId": "claimInboundMessages",
         "security": [
           {
@@ -7320,6 +7350,203 @@
           },
           "409": {
             "description": "INBOUND_LEASE_LOST — a reserva expirou ou a mensagem já foi finalizada. Não reprocesse: outra execução assumiu",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de requisições excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "O banco de dados demorou para responder",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/internal/messages/quota": {
+      "post": {
+        "tags": [
+          "internal",
+          "quota"
+        ],
+        "summary": "Consome a cota antes de enviar mensagem",
+        "description": "O n8n chama **antes de cada envio** à Meta. A empresa sai do `phoneNumberId`. A API soma `count` ao uso do mês (no fuso da empresa) de forma atômica e só se couber no `monthlyMessageLimit` — duas chamadas simultâneas nunca passam juntas do limite. Sem limite cadastrado, só conta. Com 402, **não envie**. A cota conta tentativas: falha no envio à Meta não devolve a unidade. A API não recebe nem guarda o texto",
+        "operationId": "consumeMessageQuota",
+        "security": [
+          {
+            "internalKey": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "phoneNumberId": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 64
+                  },
+                  "count": {
+                    "default": 1,
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 50
+                  }
+                },
+                "required": [
+                  "phoneNumberId"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Cota consumida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageUsage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados de entrada inválidos. O corpo traz issues[] com field e message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Chave interna inválida",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "402": {
+            "description": "QUOTA_EXCEEDED — limite mensal atingido; nada foi contado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Nenhuma empresa usa este phone_number_id",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de requisições excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "O banco de dados demorou para responder",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/messages/usage": {
+      "get": {
+        "tags": [
+          "quota"
+        ],
+        "summary": "Uso de mensagens no mês",
+        "description": "Sem `month`, usa o mês corrente no fuso da empresa. `limit` e `remaining` nulos significam sem limite",
+        "operationId": "getMessageUsage",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "month",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "pattern": "^\\d{4}-(0[1-9]|1[0-2])$"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Uso do mês",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MessageUsage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados de entrada inválidos. O corpo traz issues[] com field e message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token de acesso ausente, inválido ou expirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Registro não encontrado neste tenant",
             "content": {
               "application/json": {
                 "schema": {

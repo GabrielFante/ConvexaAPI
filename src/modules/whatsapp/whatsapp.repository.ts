@@ -1,4 +1,4 @@
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "../../shared/database/prisma";
 
 export type InboundMessageInput = {
@@ -25,7 +25,6 @@ export type ClaimedInboundMessage = {
   text: string | null;
   mediaId: string | null;
   sentAt: Date;
-  conversationId: string;
   attempts: number;
 };
 
@@ -33,7 +32,6 @@ export type ClaimOptions = {
   limit: number;
   leaseSeconds: number;
   maxAttempts: number;
-  conversationIdleMinutes: number;
 };
 
 const LEASE_EXPIRED_ERROR = "Prazo de processamento expirado sem confirmação";
@@ -42,6 +40,14 @@ const leased = (id: string, leaseId: string) =>
   ({ id, leaseId, status: "PROCESSING" }) as const;
 
 const releasedLease = { leaseId: null, lockedUntil: null } as const;
+
+const erasedContent = {
+  phone: null,
+  contactName: null,
+  text: null,
+  mediaId: null,
+  payload: Prisma.DbNull,
+} as const;
 
 export const whatsappRepository = {
   findTenantsByPhoneNumberIds(phoneNumberIds: string[]) {
@@ -71,17 +77,27 @@ export const whatsappRepository = {
     return count;
   },
 
-  claim({
-    limit,
-    leaseSeconds,
-    maxAttempts,
-    conversationIdleMinutes,
-  }: ClaimOptions) {
+  claim({ limit, leaseSeconds, maxAttempts }: ClaimOptions) {
     return prisma.$transaction(async (tx) => {
       await tx.$executeRaw`
         UPDATE "InboundMessage"
-           SET "status" = (CASE WHEN "attempts" >= ${maxAttempts}::int
-                               THEN 'DEAD' ELSE 'PENDING' END)::"InboundMessageStatus",
+           SET "status" = 'DEAD',
+               "leaseId" = NULL,
+               "lockedUntil" = NULL,
+               "phone" = NULL,
+               "contactName" = NULL,
+               "text" = NULL,
+               "mediaId" = NULL,
+               "payload" = NULL,
+               "lastError" = ${LEASE_EXPIRED_ERROR},
+               "updatedAt" = now()
+         WHERE "status" = 'PROCESSING'
+           AND "lockedUntil" < now()
+           AND "attempts" >= ${maxAttempts}::int`;
+
+      await tx.$executeRaw`
+        UPDATE "InboundMessage"
+           SET "status" = 'PENDING',
                "leaseId" = NULL,
                "lockedUntil" = NULL,
                "availableAt" = now(),
@@ -94,20 +110,6 @@ export const whatsappRepository = {
         UPDATE "InboundMessage" AS m
            SET "status" = 'PROCESSING',
                "attempts" = m."attempts" + 1,
-               "conversationId" = COALESCE(
-                 m."conversationId",
-                 (SELECT p."conversationId"
-                    FROM "InboundMessage" AS p
-                   WHERE p."businessId" = m."businessId"
-                     AND p."phone" = m."phone"
-                     AND p."conversationId" IS NOT NULL
-                     AND (p."sentAt", p."createdAt", p."id")
-                       < (m."sentAt", m."createdAt", m."id")
-                     AND p."sentAt" >= m."sentAt"
-                           - ${conversationIdleMinutes}::int * interval '1 minute'
-                   ORDER BY p."sentAt" DESC, p."createdAt" DESC, p."id" DESC
-                   LIMIT 1),
-                 gen_random_uuid()),
                "leaseId" = gen_random_uuid(),
                "lockedUntil" = now() + ${leaseSeconds}::int * interval '1 second',
                "updatedAt" = now()
@@ -129,7 +131,7 @@ export const whatsappRepository = {
                   FOR UPDATE SKIP LOCKED)
      RETURNING m."id", m."leaseId", m."businessId", m."phoneNumberId",
                m."phone", m."contactName", m."type", m."text", m."mediaId",
-               m."sentAt", m."conversationId", m."attempts"`;
+               m."sentAt", m."attempts"`;
 
       return claimed.sort(
         (a, b) =>
@@ -150,6 +152,7 @@ export const whatsappRepository = {
       where: leased(id, leaseId),
       data: {
         ...releasedLease,
+        ...erasedContent,
         status: "DONE",
         processedAt: new Date(),
         lastError: null,
@@ -181,7 +184,12 @@ export const whatsappRepository = {
   async markDead(id: string, leaseId: string, error: string): Promise<boolean> {
     const { count } = await prisma.inboundMessage.updateMany({
       where: leased(id, leaseId),
-      data: { ...releasedLease, status: "DEAD", lastError: error },
+      data: {
+        ...releasedLease,
+        ...erasedContent,
+        status: "DEAD",
+        lastError: error,
+      },
     });
 
     return count > 0;
