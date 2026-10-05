@@ -1,9 +1,10 @@
 import { AppError } from "../../shared/errors/AppError";
-import { buildPage, type Pagination } from "../../shared/validation/pagination";
+import { buildPage } from "../../shared/validation/pagination";
 import { employeeRepository } from "./employee.repository";
 import type {
   CreateEmployeeInput,
   EmployeeHourInput,
+  ListEmployeeQuery,
   UpdateEmployeeInput,
 } from "./employee.schema";
 
@@ -18,9 +19,9 @@ async function getOwnedOrFail(id: string) {
 }
 
 export const employeeService = {
-  async list(pagination: Pagination) {
-    const { data, total } = await employeeRepository.list(pagination);
-    return buildPage(data, total, pagination);
+  async list(query: ListEmployeeQuery) {
+    const { data, total } = await employeeRepository.list(query);
+    return buildPage(data, total, query);
   },
 
   get(id: string) {
@@ -48,6 +49,6 @@ export const employeeService = {
 
   async delete(id: string) {
     await getOwnedOrFail(id);
-    await employeeRepository.delete(id);
+    await employeeRepository.deactivate(id);
   },
 };

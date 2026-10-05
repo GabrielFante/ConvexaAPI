@@ -48,7 +48,6 @@ const publicBusinessFields = {
   phone: true,
   metaPhoneNumberId: true,
   metaWabaId: true,
-  aiSystemPrompt: true,
   slotIntervalMinutes: true,
   bufferMinutes: true,
   createdAt: true,
@@ -73,15 +72,35 @@ export const businessRepository = {
   findByMetaPhoneNumberId(phoneNumberId: string) {
     return prisma.business.findUnique({
       where: { metaPhoneNumberId: phoneNumberId },
-      select: { id: true, name: true, timezone: true, aiSystemPrompt: true },
+      select: { id: true, name: true, timezone: true },
     });
   },
 
   update(data: UpdateBusinessInput) {
-    return prisma.business.update({
-      where: { id: getBusinessId() },
-      data,
-      select: businessWithSchedule,
+    const { metaAccessToken, metaAppSecret, ...businessData } = data;
+    const credentials = {
+      ...(metaAccessToken === undefined ? {} : { metaAccessToken }),
+      ...(metaAppSecret === undefined ? {} : { metaAppSecret }),
+    };
+    const businessId = getBusinessId();
+
+    return prisma.$transaction(async (tx) => {
+      const business = await tx.business.update({
+        where: { id: businessId },
+        data: businessData,
+        select: businessWithSchedule,
+      });
+
+      if (Object.keys(credentials).length) {
+        await tx.businessIntegration.upsert({
+          where: { businessId },
+          create: { businessId, ...credentials },
+          update: credentials,
+          select: { businessId: true },
+        });
+      }
+
+      return business;
     });
   },
 

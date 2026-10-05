@@ -1,11 +1,13 @@
 import { z } from "zod";
 import {
   dayOfWeek,
+  falseByDefaultQuery,
   hasOverlappingRanges,
   minuteOfDay,
   OVERLAPPING_RANGES_MESSAGE,
   uuid,
 } from "../../shared/validation/common";
+import { paginationQuerySchema } from "../../shared/validation/pagination";
 
 export const employeeHourSchema = z
   .object({
@@ -50,6 +52,11 @@ export const setEmployeeHoursSchema = z.object({
   hours: employeeHoursArray,
 });
 
+export const listEmployeeQuerySchema = paginationQuerySchema.extend({
+  includeInactive: falseByDefaultQuery,
+});
+
 export type CreateEmployeeInput = z.infer<typeof createEmployeeSchema>;
 export type UpdateEmployeeInput = z.infer<typeof updateEmployeeSchema>;
 export type EmployeeHourInput = z.infer<typeof employeeHourSchema>;
+export type ListEmployeeQuery = z.infer<typeof listEmployeeQuerySchema>;

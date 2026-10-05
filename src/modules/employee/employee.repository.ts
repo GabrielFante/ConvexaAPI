@@ -2,13 +2,11 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "../../shared/database/prisma";
 import { AppError } from "../../shared/errors/AppError";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
-import {
-  toPrismaPage,
-  type Pagination,
-} from "../../shared/validation/pagination";
+import { toPrismaPage } from "../../shared/validation/pagination";
 import type {
   CreateEmployeeInput,
   EmployeeHourInput,
+  ListEmployeeQuery,
   UpdateEmployeeInput,
 } from "./employee.schema";
 
@@ -83,15 +81,18 @@ async function findScopedOrFail(id: string) {
 }
 
 export const employeeRepository = {
-  async list(pagination: Pagination) {
-    const where = { businessId: getBusinessId() };
+  async list(query: ListEmployeeQuery) {
+    const where = {
+      businessId: getBusinessId(),
+      ...(query.includeInactive ? {} : { active: true }),
+    };
 
     const [data, total] = await prisma.$transaction([
       prisma.employee.findMany({
         where,
         orderBy: { createdAt: "desc" },
         select: employeeFields,
-        ...toPrismaPage(pagination),
+        ...toPrismaPage(query),
       }),
       prisma.employee.count({ where }),
     ]);
@@ -141,9 +142,10 @@ export const employeeRepository = {
     return findScopedOrFail(id);
   },
 
-  async delete(id: string) {
-    const { count } = await prisma.employee.deleteMany({
+  async deactivate(id: string) {
+    const { count } = await prisma.employee.updateMany({
       where: { id, businessId: getBusinessId() },
+      data: { active: false },
     });
 
     if (!count) {

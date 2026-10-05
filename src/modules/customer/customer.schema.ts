@@ -1,15 +1,16 @@
 import { z } from "zod";
+import { phone } from "../../shared/validation/phone";
 
 export const createCustomerSchema = z.object({
   name: z.string().trim().min(1, "name é obrigatório"),
-  phone: z.string().trim().min(1, "phone é obrigatório"),
+  phone,
   notes: z.string().trim().optional(),
 });
 
 export const updateCustomerSchema = createCustomerSchema.partial();
 
 export const resolveCustomerSchema = z.object({
-  phone: z.string().trim().min(1, "phone é obrigatório"),
+  phone,
   name: z.string().trim().min(1).optional(),
 });
 

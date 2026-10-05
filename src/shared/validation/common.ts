@@ -20,6 +20,11 @@ export const calendarDate = z
 
 export const idParam = z.object({ id: uuid });
 
+export const falseByDefaultQuery = z
+  .enum(["true", "false"], "Use true ou false")
+  .default("false")
+  .transform((value) => value === "true");
+
 export const instant = z.iso
   .datetime({ offset: true, message: "Use data e hora ISO-8601 com fuso" })
   .pipe(z.coerce.date());

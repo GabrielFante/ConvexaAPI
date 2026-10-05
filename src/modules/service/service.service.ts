@@ -1,7 +1,11 @@
 import { AppError } from "../../shared/errors/AppError";
-import { buildPage, type Pagination } from "../../shared/validation/pagination";
+import { buildPage } from "../../shared/validation/pagination";
 import { serviceRepository } from "./service.repository";
-import type { CreateServiceInput, UpdateServiceInput } from "./service.schema";
+import type {
+  CreateServiceInput,
+  ListServiceQuery,
+  UpdateServiceInput,
+} from "./service.schema";
 
 async function getOwnedOrFail(id: string) {
   const service = await serviceRepository.findById(id);
@@ -14,9 +18,9 @@ async function getOwnedOrFail(id: string) {
 }
 
 export const serviceService = {
-  async list(pagination: Pagination) {
-    const { data, total } = await serviceRepository.list(pagination);
-    return buildPage(data, total, pagination);
+  async list(query: ListServiceQuery) {
+    const { data, total } = await serviceRepository.list(query);
+    return buildPage(data, total, query);
   },
 
   get(id: string) {
@@ -34,6 +38,6 @@ export const serviceService = {
 
   async delete(id: string) {
     await getOwnedOrFail(id);
-    await serviceRepository.delete(id);
+    await serviceRepository.deactivate(id);
   },
 };

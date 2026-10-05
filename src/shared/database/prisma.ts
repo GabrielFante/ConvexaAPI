@@ -2,8 +2,21 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@prisma/client";
 import { env } from "../env";
 import { AppError } from "../errors/AppError";
+import { logger } from "../logger/logger";
+import { createPool } from "./pool-config";
 
-const adapter = new PrismaPg({ connectionString: env.DATABASE_URL });
+const pool = createPool(env);
+
+pool.on("error", (error) => {
+  logger.error("Erro em conexao ociosa do pool do banco", error);
+});
+
+const adapter = new PrismaPg(pool, {
+  disposeExternalPool: true,
+  onPoolError: (error) => logger.error("Erro no pool do banco", error),
+  onConnectionError: (error) =>
+    logger.error("Erro ao abrir conexao com o banco", error),
+});
 
 const globalForPrisma = globalThis as unknown as {
   prisma?: PrismaClient;

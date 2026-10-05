@@ -1,11 +1,12 @@
 import { prisma } from "../../shared/database/prisma";
 import { AppError } from "../../shared/errors/AppError";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
-import {
-  toPrismaPage,
-  type Pagination,
-} from "../../shared/validation/pagination";
-import type { CreateServiceInput, UpdateServiceInput } from "./service.schema";
+import { toPrismaPage } from "../../shared/validation/pagination";
+import type {
+  CreateServiceInput,
+  ListServiceQuery,
+  UpdateServiceInput,
+} from "./service.schema";
 
 const serviceFields = {
   id: true,
@@ -22,15 +23,18 @@ function notFound() {
 }
 
 export const serviceRepository = {
-  async list(pagination: Pagination) {
-    const where = { businessId: getBusinessId() };
+  async list(query: ListServiceQuery) {
+    const where = {
+      businessId: getBusinessId(),
+      ...(query.includeInactive ? {} : { active: true }),
+    };
 
     const [data, total] = await prisma.$transaction([
       prisma.service.findMany({
         where,
         orderBy: { createdAt: "desc" },
         select: serviceFields,
-        ...toPrismaPage(pagination),
+        ...toPrismaPage(query),
       }),
       prisma.service.count({ where }),
     ]);
@@ -66,9 +70,10 @@ export const serviceRepository = {
     return service;
   },
 
-  async delete(id: string) {
-    const { count } = await prisma.service.deleteMany({
+  async deactivate(id: string) {
+    const { count } = await prisma.service.updateMany({
       where: { id, businessId: getBusinessId() },
+      data: { active: false },
     });
 
     if (!count) {

@@ -43,7 +43,6 @@ export const businessService = {
       businessId: business.id,
       name: business.name,
       timezone: business.timezone,
-      aiSystemPrompt: business.aiSystemPrompt,
     };
   },
 
