@@ -25,6 +25,7 @@ import { appointmentRoutes } from "./modules/appointment/appointment.routes";
 import { schedulingRoutes } from "./modules/scheduling/scheduling.routes";
 import { agentInternalRoutes, agentRoutes } from "./modules/agent/agent.routes";
 import { quotaInternalRoutes, quotaRoutes } from "./modules/quota/quota.routes";
+import { integrationInternalRoutes } from "./modules/integration/integration.routes";
 import {
   errorHandler,
   notFoundHandler,
@@ -84,6 +85,7 @@ app.use(
   businessInternalRoutes,
   agentInternalRoutes,
   quotaInternalRoutes,
+  integrationInternalRoutes,
 );
 app.use("/agent", agentRateLimit, agentAuthMiddleware, agentRoutes);
 

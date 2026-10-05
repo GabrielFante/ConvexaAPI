@@ -64,6 +64,7 @@ import {
   customerSchema,
   employeeSchema,
   healthSchema,
+  integrationCredentialsSchema,
   messageUsageSchema,
   pageMetaSchema,
   profileSchema,
@@ -195,7 +196,7 @@ Quatro superfícies distintas:
 - **\`/api/auth/*\` públicas** — \`register\`, \`login\`, \`refresh\`, \`forgot-password\` e \`reset-password\` não exigem token.
 - **\`/api/*\`** — exigem \`Authorization: Bearer <accessToken>\`. O \`businessId\` sai do próprio token; **não** existe header de tenant.
 - **\`/internal/*\`** — exigem o header \`x-internal-key\`. É a superfície do n8n, usada antes de existir um usuário logado.
-- **\`/agent/*\`** — as tools do agente de IA. Exigem \`Authorization: Bearer <token>\` com o token de \`POST /internal/agent-sessions\`, que o n8n pede a cada mensagem recebida. O token amarra **o tenant e o cliente da conversa**: o agente nunca informa \`businessId\` nem \`customerId\`, então não consegue agir em nome de outra barbearia ou de outro cliente. O token do painel não vale aqui, e este não vale em \`/api\`.
+- **\`/agent/*\`** — rotas de agenda consumidas pelo n8n (é ele que fala com a IA, não a API). Exigem \`Authorization: Bearer <token>\` com o token de \`POST /internal/agent-sessions\`, que o n8n pede a cada mensagem recebida. O token amarra **o tenant e o cliente da conversa**: o agente nunca informa \`businessId\` nem \`customerId\`, então não consegue agir em nome de outra barbearia ou de outro cliente. O token do painel não vale aqui, e este não vale em \`/api\`.
 
 O \`accessToken\` expira (veja \`expiresIn\`, em segundos). Renove com \`POST /api/auth/refresh\` usando o \`refreshToken\`, que é rotacionado a cada uso: o token antigo deixa de valer na hora.
 
@@ -242,7 +243,8 @@ export function buildOpenApiDocument(serverUrl?: string) {
       { name: "scheduling", description: "Consulta de disponibilidade" },
       {
         name: "agent",
-        description: "Tools do agente de IA (token de sessão do agente)",
+        description:
+          "Rotas de agenda consumidas pelo n8n (token de sessão do agente)",
       },
       {
         name: "quota",
@@ -280,6 +282,7 @@ export function buildOpenApiDocument(serverUrl?: string) {
         ClosedDay: output(closedDaySchema),
         Vacation: output(vacationSchema),
         TenantByPhoneNumberId: output(tenantByPhoneNumberIdSchema),
+        IntegrationCredentials: output(integrationCredentialsSchema),
         Service: output(serviceSchema),
         Employee: output(employeeSchema),
         Customer: output(customerSchema),
@@ -449,7 +452,7 @@ function internalPaths() {
         tags: ["internal"],
         summary: "Resolve o tenant pelo número da Meta",
         description:
-          "Primeira chamada do fluxo de WhatsApp: descobre de qual empresa é a mensagem antes de existir sessão. Devolve o aiSystemPrompt do negócio",
+          "Primeira chamada do fluxo de WhatsApp: descobre de qual empresa é a mensagem antes de existir sessão",
         operationId: "resolveTenantByPhoneNumberId",
         security: [{ internalKey: [] }],
         parameters: [phoneNumberIdPath],
@@ -457,6 +460,25 @@ function internalPaths() {
           "200": ok("Tenant encontrado", ref("TenantByPhoneNumberId")),
           "401": error("Chave interna inválida"),
           "404": error("Nenhuma empresa usa este phone_number_id"),
+          "429": RATE_LIMITED,
+          "503": UNAVAILABLE,
+        },
+      },
+    },
+    "/internal/integrations/by-phone-number-id/{phoneNumberId}": {
+      get: {
+        tags: ["internal"],
+        summary: "Entrega as credenciais da Meta ao n8n",
+        description:
+          "O n8n chama **no momento de enviar** à Meta: a API não envia mensagens, mas é a única que guarda o token de cada empresa. A empresa sai do `phoneNumberId`. A resposta vem com `Cache-Control: no-store` — não grave o token no n8n nem em log. Número não cadastrado e empresa sem token devolvem o mesmo 404",
+        operationId: "getIntegrationCredentials",
+        security: [{ internalKey: [] }],
+        parameters: [phoneNumberIdPath],
+        responses: {
+          "200": ok("Credenciais da Meta", ref("IntegrationCredentials")),
+          "400": VALIDATION,
+          "401": error("Chave interna inválida"),
+          "404": error("Integração da Meta não encontrada"),
           "429": RATE_LIMITED,
           "503": UNAVAILABLE,
         },
@@ -1065,7 +1087,7 @@ function agentPaths() {
         tags: ["internal", "agent"],
         summary: "Abre a sessão do agente para uma mensagem recebida",
         description:
-          'Chamada pelo n8n a cada mensagem do WhatsApp. Resolve o tenant pelo `phoneNumberId` da Meta, faz o upsert do cliente pelo telefone de quem escreveu e devolve um token de 5 minutos que amarra os dois. Traz também o `aiSystemPrompt` do negócio e o `now` já no fuso da empresa, para o agente interpretar "amanhã" sem converter fuso',
+          'Chamada pelo n8n a cada mensagem do WhatsApp. Resolve o tenant pelo `phoneNumberId` da Meta, faz o upsert do cliente pelo telefone de quem escreveu e devolve um token de 5 minutos que amarra os dois. Traz também o `now` já no fuso da empresa, para o agente interpretar "amanhã" sem converter fuso',
         operationId: "createAgentSession",
         security: [{ internalKey: [] }],
         requestBody: body(agentSessionInputSchema),

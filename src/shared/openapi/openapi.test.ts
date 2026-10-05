@@ -24,6 +24,7 @@ import {
   quotaInternalRoutes,
   quotaRoutes,
 } from "../../modules/quota/quota.routes";
+import { integrationInternalRoutes } from "../../modules/integration/integration.routes";
 import { healthRoutes } from "../health/health.routes";
 import { buildOpenApiDocument } from "./openapi.document";
 
@@ -47,6 +48,7 @@ const mounted: { prefix: string; router: Router }[] = [
   { prefix: "/agent", router: agentRoutes },
   { prefix: "/internal", router: quotaInternalRoutes },
   { prefix: "/api", router: quotaRoutes },
+  { prefix: "/internal", router: integrationInternalRoutes },
 ];
 
 function toOpenApiPath(path: string): string {
@@ -119,12 +121,24 @@ describe("documento OpenAPI", () => {
     expect(sobrando).toEqual([]);
   });
 
-  it("não expõe credenciais da Meta em nenhuma resposta", () => {
-    const { components } = buildOpenApiDocument();
-    const serialized = JSON.stringify(components.schemas);
+  it("só expõe credenciais da Meta na rota interna feita para isso", () => {
+    const { components, paths } = buildOpenApiDocument();
+    const { IntegrationCredentials, ...others } = components.schemas;
+    const serialized = JSON.stringify(others);
 
     expect(serialized).not.toContain("metaAccessToken");
     expect(serialized).not.toContain("metaAppSecret");
+    expect(JSON.stringify(IntegrationCredentials)).toContain("metaAccessToken");
+
+    const users = Object.entries(paths)
+      .filter(([, item]) =>
+        JSON.stringify(item).includes("IntegrationCredentials"),
+      )
+      .map(([path]) => path);
+
+    expect(users).toEqual([
+      "/internal/integrations/by-phone-number-id/{phoneNumberId}",
+    ]);
   });
 
   it("serve a spec sem exigir autenticação", async () => {

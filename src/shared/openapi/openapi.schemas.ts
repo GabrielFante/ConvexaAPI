@@ -52,7 +52,6 @@ export const businessSchema = z.object({
   phone: z.string().nullable(),
   metaPhoneNumberId: z.string().nullable(),
   metaWabaId: z.string().nullable(),
-  aiSystemPrompt: z.string().nullable(),
   slotIntervalMinutes: z.int(),
   bufferMinutes: z.int(),
   createdAt: instant,
@@ -66,7 +65,12 @@ export const tenantByPhoneNumberIdSchema = z.object({
   businessId: id,
   name: z.string(),
   timezone: z.string(),
-  aiSystemPrompt: z.string().nullable(),
+});
+
+export const integrationCredentialsSchema = z.object({
+  businessId: id,
+  metaAccessToken: z.string(),
+  metaAppSecret: z.string().nullable(),
 });
 
 export const serviceSchema = z.object({
@@ -208,7 +212,6 @@ export const agentSessionSchema = z.object({
     id,
     name: z.string(),
     timezone: z.string(),
-    aiSystemPrompt: z.string().nullable(),
   }),
   customer: z.object({ id, name: z.string(), phone: z.string() }),
   now: z.object(wallClockFields),
