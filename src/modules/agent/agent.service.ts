@@ -108,7 +108,6 @@ export const agentService = {
         id: tenant.businessId,
         name: tenant.name,
         timezone: tenant.timezone,
-        aiSystemPrompt: tenant.aiSystemPrompt,
       },
       customer: { id: customer.id, name: customer.name, phone: customer.phone },
       now: wallClock(new Date(), tenant.timezone),

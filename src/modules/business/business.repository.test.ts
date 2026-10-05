@@ -17,7 +17,6 @@ const prismaMock = vi.hoisted(() => {
     metaWabaId: "9876543210",
     metaAccessToken: "EAAG-token-super-secreto",
     metaAppSecret: "app-secret-super-secreto",
-    aiSystemPrompt: null,
     slotIntervalMinutes: 15,
     bufferMinutes: 0,
     createdAt: new Date(),
@@ -136,7 +135,6 @@ describe("businessRepository — credenciais da Meta", () => {
         id: true,
         name: true,
         timezone: true,
-        aiSystemPrompt: true,
       },
     });
   });

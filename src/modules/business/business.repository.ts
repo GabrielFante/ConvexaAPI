@@ -48,7 +48,6 @@ const publicBusinessFields = {
   phone: true,
   metaPhoneNumberId: true,
   metaWabaId: true,
-  aiSystemPrompt: true,
   slotIntervalMinutes: true,
   bufferMinutes: true,
   createdAt: true,
@@ -73,7 +72,7 @@ export const businessRepository = {
   findByMetaPhoneNumberId(phoneNumberId: string) {
     return prisma.business.findUnique({
       where: { metaPhoneNumberId: phoneNumberId },
-      select: { id: true, name: true, timezone: true, aiSystemPrompt: true },
+      select: { id: true, name: true, timezone: true },
     });
   },
 

@@ -47,7 +47,6 @@ const tenant = {
   businessId: TENANT_A,
   name: "Barbearia do tenant A",
   timezone: "America/Sao_Paulo",
-  aiSystemPrompt: "Voce e a atendente da barbearia",
 };
 
 function appointment(overrides: Record<string, unknown> = {}) {
@@ -154,7 +153,6 @@ describe("POST /internal/agent-sessions", () => {
         id: TENANT_A,
         name: tenant.name,
         timezone: tenant.timezone,
-        aiSystemPrompt: tenant.aiSystemPrompt,
       },
       customer: { id: CUSTOMER, name: "João", phone: "+5511999999999" },
     });

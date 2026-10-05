@@ -41,7 +41,6 @@ model Business {
   phone               String?
   metaPhoneNumberId   String?  @unique
   metaWabaId          String?
-  aiSystemPrompt      String?
   slotIntervalMinutes Int      @default(15)
   bufferMinutes       Int      @default(0)
   monthlyMessageLimit Int?

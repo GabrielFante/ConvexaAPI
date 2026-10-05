@@ -50,7 +50,6 @@ describe("businessService — resolução pelo número da Meta", () => {
       id: "11111111-1111-4111-8111-111111111111",
       name: "Barbearia do Gabriel",
       timezone: "America/Sao_Paulo",
-      aiSystemPrompt: "Você é a atendente da barbearia",
     });
 
     const tenant =
@@ -60,14 +59,8 @@ describe("businessService — resolução pelo número da Meta", () => {
       businessId: "11111111-1111-4111-8111-111111111111",
       name: "Barbearia do Gabriel",
       timezone: "America/Sao_Paulo",
-      aiSystemPrompt: "Você é a atendente da barbearia",
     });
-    expect(Object.keys(tenant)).toEqual([
-      "businessId",
-      "name",
-      "timezone",
-      "aiSystemPrompt",
-    ]);
+    expect(Object.keys(tenant)).toEqual(["businessId", "name", "timezone"]);
   });
 
   it("consulta o repositório pelo número informado", async () => {
@@ -75,7 +68,6 @@ describe("businessService — resolução pelo número da Meta", () => {
       id: "11111111-1111-4111-8111-111111111111",
       name: "Barbearia do Gabriel",
       timezone: "America/Sao_Paulo",
-      aiSystemPrompt: null,
     });
 
     await businessService.resolveByMetaPhoneNumberId("1234567890");
