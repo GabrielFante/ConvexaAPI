@@ -270,7 +270,6 @@ export const inboundClaimSchema = z.object({
       text: z.string().nullable(),
       mediaId: z.string().nullable(),
       sentAt: instant,
-      conversationId: id,
       attempts: z.int(),
     }),
   ),
@@ -280,4 +279,11 @@ export const inboundFailResultSchema = z.object({
   status: z.enum(["PENDING", "DEAD"]),
   attempts: z.int(),
   retryInSeconds: z.int().optional(),
+});
+
+export const messageUsageSchema = z.object({
+  month: z.string(),
+  sent: z.int(),
+  limit: z.int().nullable(),
+  remaining: z.int().nullable(),
 });

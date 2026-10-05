@@ -413,12 +413,10 @@ describe("POST /internal/inbound-messages/claim", () => {
       limit: 1,
       leaseSeconds: 120,
       maxAttempts: INBOUND_MAX_ATTEMPTS,
-      conversationIdleMinutes: 30,
     });
   });
 
-  it("entrega a chave da conversa junto com a mensagem", async () => {
-    const conversationId = "abababab-1111-4111-8111-111111111111";
+  it("entrega a mensagem reservada com o leaseId", async () => {
     mocks.repository.claim.mockResolvedValue([
       {
         id: MESSAGE_ID,
@@ -431,7 +429,6 @@ describe("POST /internal/inbound-messages/claim", () => {
         text: "oi",
         mediaId: null,
         sentAt: new Date("2026-10-05T12:00:00.000Z"),
-        conversationId,
         attempts: 1,
       },
     ]);
@@ -441,7 +438,7 @@ describe("POST /internal/inbound-messages/claim", () => {
     expect(response.body.messages[0]).toMatchObject({
       id: MESSAGE_ID,
       leaseId: LEASE_ID,
-      conversationId,
+      text: "oi",
       sentAt: "2026-10-05T12:00:00.000Z",
     });
   });
