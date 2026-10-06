@@ -22,6 +22,7 @@ import { serviceService } from "../service/service.service";
 import type {
   AgentAvailabilityQuery,
   AgentBookInput,
+  AgentRescheduleInput,
   AgentSessionInput,
 } from "./agent.schema";
 
@@ -179,5 +180,15 @@ export const agentService = {
     const cancelled = await schedulingEngine.cancelAppointment(id);
 
     return toAgentAppointment(cancelled, timezone);
+  },
+
+  async reschedule(id: string, input: AgentRescheduleInput) {
+    const { timezone } = getCurrentAgent();
+
+    await loadOwnAppointment(id);
+
+    const rescheduled = await schedulingEngine.rescheduleAppointment(id, input);
+
+    return toAgentAppointment(rescheduled, timezone);
   },
 };

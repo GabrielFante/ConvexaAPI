@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
     getAppointment: vi.fn(),
     createAppointment: vi.fn(),
     cancelAppointment: vi.fn(),
+    rescheduleAppointment: vi.fn(),
   },
 }));
 
@@ -391,5 +392,106 @@ describe("tools do agente", () => {
     expect(response.status).toBe(404);
     expect(response.body.code).toBe("APPOINTMENT_NOT_FOUND");
     expect(mocks.engine.cancelAppointment).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /agent/appointments/:id/reschedule", () => {
+  const NEW_START = "2026-09-24T19:00:00.000Z";
+  const OTHER_EMPLOYEE = "66666666-2222-4222-8222-222222222222";
+
+  it("reagenda o próprio agendamento e devolve a hora no fuso da empresa", async () => {
+    mocks.engine.getAppointment.mockResolvedValue(appointment());
+    mocks.engine.rescheduleAppointment.mockResolvedValue(
+      appointment({
+        startAt: new Date(NEW_START),
+        endAt: new Date("2026-09-24T19:30:00.000Z"),
+      }),
+    );
+
+    const response = await request(app)
+      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
+      .set("authorization", await agentAuth())
+      .send({ startAt: NEW_START });
+
+    expect(response.status).toBe(200);
+    expect(mocks.engine.rescheduleAppointment).toHaveBeenCalledWith(
+      APPOINTMENT,
+      { startAt: new Date(NEW_START) },
+    );
+    expect(response.body).toMatchObject({
+      id: APPOINTMENT,
+      date: "2026-09-24",
+      weekday: "quinta-feira",
+      time: "16:00",
+      employee: { id: EMPLOYEE, name: "Carlos" },
+    });
+    expect(JSON.stringify(response.body)).not.toContain("+5511999999999");
+  });
+
+  it("repassa a troca de funcionário ao engine", async () => {
+    mocks.engine.getAppointment.mockResolvedValue(appointment());
+    mocks.engine.rescheduleAppointment.mockResolvedValue(
+      appointment({ employeeId: OTHER_EMPLOYEE }),
+    );
+
+    await request(app)
+      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
+      .set("authorization", await agentAuth())
+      .send({ startAt: NEW_START, employeeId: OTHER_EMPLOYEE });
+
+    expect(mocks.engine.rescheduleAppointment).toHaveBeenCalledWith(
+      APPOINTMENT,
+      { startAt: new Date(NEW_START), employeeId: OTHER_EMPLOYEE },
+    );
+  });
+
+  it("não reagenda agendamento de outro cliente do mesmo tenant", async () => {
+    mocks.engine.getAppointment.mockResolvedValue(
+      appointment({ customerId: OTHER_CUSTOMER }),
+    );
+
+    const response = await request(app)
+      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
+      .set("authorization", await agentAuth())
+      .send({ startAt: NEW_START });
+
+    expect(response.status).toBe(404);
+    expect(response.body.code).toBe("APPOINTMENT_NOT_FOUND");
+    expect(mocks.engine.rescheduleAppointment).not.toHaveBeenCalled();
+  });
+
+  it("propaga o conflito do novo horário com code", async () => {
+    mocks.engine.getAppointment.mockResolvedValue(appointment());
+    mocks.engine.rescheduleAppointment.mockRejectedValue(
+      new AppError("Horário indisponível", 409, "APPOINTMENT_CONFLICT"),
+    );
+
+    const response = await request(app)
+      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
+      .set("authorization", await agentAuth())
+      .send({ startAt: NEW_START });
+
+    expect(response.status).toBe(409);
+    expect(response.body.code).toBe("APPOINTMENT_CONFLICT");
+  });
+
+  it("recusa corpo sem startAt", async () => {
+    const response = await request(app)
+      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
+      .set("authorization", await agentAuth())
+      .send({});
+
+    expect(response.status).toBe(400);
+    expect(mocks.engine.getAppointment).not.toHaveBeenCalled();
+  });
+
+  it("exige o token do agente", async () => {
+    const response = await request(app)
+      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
+      .set("authorization", bearer())
+      .send({ startAt: NEW_START });
+
+    expect(response.status).toBe(401);
+    expect(mocks.engine.rescheduleAppointment).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,8 @@
 import { z } from "zod";
-import { createAppointmentSchema } from "../appointment/appointment.schema";
+import {
+  createAppointmentSchema,
+  rescheduleAppointmentSchema,
+} from "../appointment/appointment.schema";
 import { resolveCustomerSchema } from "../customer/customer.schema";
 import { availabilityQuerySchema } from "../scheduling/scheduling.schema";
 
@@ -28,6 +31,9 @@ export const agentBookSchema = createAppointmentSchema.omit({
   customerId: true,
 });
 
+export const agentRescheduleSchema = rescheduleAppointmentSchema;
+
 export type AgentSessionInput = z.infer<typeof agentSessionSchema>;
 export type AgentAvailabilityQuery = z.infer<typeof agentAvailabilitySchema>;
 export type AgentBookInput = z.infer<typeof agentBookSchema>;
+export type AgentRescheduleInput = z.infer<typeof agentRescheduleSchema>;

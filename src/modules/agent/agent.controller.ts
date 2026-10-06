@@ -4,6 +4,7 @@ import { agentService } from "./agent.service";
 import {
   agentAvailabilitySchema,
   agentBookSchema,
+  agentRescheduleSchema,
   agentSessionSchema,
 } from "./agent.schema";
 
@@ -39,6 +40,13 @@ export const agentController = {
   async cancel(req: Request, res: Response) {
     const { id } = idParam.parse(req.params);
     const appointment = await agentService.cancel(id);
+    res.json(appointment);
+  },
+
+  async reschedule(req: Request, res: Response) {
+    const { id } = idParam.parse(req.params);
+    const data = agentRescheduleSchema.parse(req.body);
+    const appointment = await agentService.reschedule(id, data);
     res.json(appointment);
   },
 };
