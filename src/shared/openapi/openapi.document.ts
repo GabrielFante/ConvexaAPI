@@ -575,7 +575,7 @@ function businessPaths() {
         tags: ["business"],
         summary: "Atualiza a empresa",
         description:
-          "Apenas OWNER. metaAccessToken e metaAppSecret são aceitos aqui e guardados separados — nunca voltam em nenhuma resposta",
+          "Apenas OWNER. metaAccessToken e metaAppSecret são aceitos aqui e guardados separados e cifrados — nunca voltam em nenhuma resposta",
         operationId: "updateBusiness",
         requestBody: body(updateBusinessSchema),
         responses: {

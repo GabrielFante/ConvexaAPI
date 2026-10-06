@@ -1,5 +1,6 @@
 import { prisma } from "../../shared/database/prisma";
 import { getBusinessId } from "../../shared/tenant/tenant-context";
+import { encryptMetaCredentials } from "../integration/meta-credentials";
 import type {
   BusinessHourInput,
   CreateClosedDayInput,
@@ -78,11 +79,11 @@ export const businessRepository = {
 
   update(data: UpdateBusinessInput) {
     const { metaAccessToken, metaAppSecret, ...businessData } = data;
-    const credentials = {
-      ...(metaAccessToken === undefined ? {} : { metaAccessToken }),
-      ...(metaAppSecret === undefined ? {} : { metaAppSecret }),
-    };
     const businessId = getBusinessId();
+    const credentials = encryptMetaCredentials(businessId, {
+      metaAccessToken,
+      metaAppSecret,
+    });
 
     return prisma.$transaction(async (tx) => {
       const business = await tx.business.update({
