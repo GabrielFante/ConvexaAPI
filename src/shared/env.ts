@@ -25,6 +25,8 @@ const SECRET_PLACEHOLDER_WORDS = [
 
 const MIN_DISTINCT_SECRET_CHARS = 12;
 
+const ENCRYPTION_KEY_PATTERN = /^[A-Za-z0-9+/_-]{43}=?$/;
+
 export const PRISMA_TRANSACTION_TIMEOUT_MS = 5000;
 
 const MAX_SANE_POOL_SIZE = 20;
@@ -122,6 +124,12 @@ export const envSchema = z
     INTERNAL_API_KEY: z
       .string()
       .min(32, "INTERNAL_API_KEY deve ter no mínimo 32 caracteres"),
+    CREDENTIALS_ENCRYPTION_KEY: z
+      .string()
+      .regex(
+        ENCRYPTION_KEY_PATTERN,
+        "CREDENTIALS_ENCRYPTION_KEY deve ter 32 bytes em base64; gere com randomBytes(32)",
+      ),
     CORS_ORIGINS: originList,
     APP_URL: z
       .url("APP_URL deve ser a URL do painel web")
@@ -158,6 +166,18 @@ export const envSchema = z
         code: "custom",
         path: ["DATABASE_POOL_MAX"],
         message: `DATABASE_POOL_MAX acima de ${MAX_SANE_POOL_SIZE} não aumenta throughput: as transações do agendamento são Serializable, e mais concorrência na mesma agenda vira mais conflito e mais retry`,
+      });
+    }
+
+    if (
+      data.CREDENTIALS_ENCRYPTION_KEY === data.JWT_SECRET ||
+      data.CREDENTIALS_ENCRYPTION_KEY === data.INTERNAL_API_KEY
+    ) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["CREDENTIALS_ENCRYPTION_KEY"],
+        message:
+          "CREDENTIALS_ENCRYPTION_KEY não pode repetir o JWT_SECRET nem a INTERNAL_API_KEY",
       });
     }
 

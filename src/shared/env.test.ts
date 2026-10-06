@@ -3,11 +3,13 @@ import { InvalidEnvError, envSchema, loadEnv } from "./env";
 
 const validUrl = "postgresql://user:pass@localhost:5432/db";
 const secret = "a".repeat(32);
+const encryptionKey = "QjngRjI_cKMT_eSEP3h2yr9NiwjB2NWDCvz4OEItEzA";
 
 const baseEnv = {
   DATABASE_URL: validUrl,
   JWT_SECRET: secret,
   INTERNAL_API_KEY: secret,
+  CREDENTIALS_ENCRYPTION_KEY: encryptionKey,
   MAIL_DRIVER: "console",
 };
 
@@ -23,6 +25,7 @@ const prodEnv = {
   RESEND_API_KEY: "re_chave_de_teste",
   JWT_SECRET: strongJwtSecret,
   INTERNAL_API_KEY: strongInternalKey,
+  CREDENTIALS_ENCRYPTION_KEY: encryptionKey,
 };
 
 function issuesFor(input: Record<string, string>) {
@@ -195,6 +198,60 @@ describe("envSchema", () => {
       expect(
         envSchema.safeParse({ ...baseEnv, JWT_SECRET: exampleSecret }).success,
       ).toBe(true);
+    });
+  });
+
+  describe("chave de criptografia das credenciais", () => {
+    it("exige a chave em qualquer ambiente", () => {
+      const { CREDENTIALS_ENCRYPTION_KEY: _key, ...withoutKey } = baseEnv;
+
+      expect(issuePaths(withoutKey)).toEqual(["CREDENTIALS_ENCRYPTION_KEY"]);
+    });
+
+    it("aceita 32 bytes em base64 padrão", () => {
+      const standard = Buffer.from(encryptionKey, "base64url").toString(
+        "base64",
+      );
+
+      expect(
+        envSchema.safeParse({
+          ...prodEnv,
+          CREDENTIALS_ENCRYPTION_KEY: standard,
+        }).success,
+      ).toBe(true);
+    });
+
+    it.each([
+      ["curta demais", "QjngRjI_cKMT_eSEP3h2yr9NiwjB2NWD"],
+      ["longa demais", `${encryptionKey}AAAA`],
+      ["com caractere fora do base64", `${encryptionKey.slice(0, 42)}!`],
+      ["em texto livre", exampleSecret],
+    ])("rejeita chave %s", (_, key) => {
+      expect(
+        issuePaths({ ...baseEnv, CREDENTIALS_ENCRYPTION_KEY: key }),
+      ).toEqual(["CREDENTIALS_ENCRYPTION_KEY"]);
+    });
+
+    it("rejeita chave igual a outro segredo", () => {
+      expect(
+        issuePaths({ ...prodEnv, CREDENTIALS_ENCRYPTION_KEY: strongJwtSecret }),
+      ).toEqual(["CREDENTIALS_ENCRYPTION_KEY"]);
+      expect(
+        issuePaths({
+          ...prodEnv,
+          CREDENTIALS_ENCRYPTION_KEY: strongInternalKey,
+        }),
+      ).toEqual(["CREDENTIALS_ENCRYPTION_KEY"]);
+    });
+
+    it("não expõe a chave na mensagem de erro", () => {
+      const messages = issuesFor({
+        ...prodEnv,
+        CREDENTIALS_ENCRYPTION_KEY: strongJwtSecret,
+      }).map((issue) => issue.message);
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0]).not.toContain(strongJwtSecret);
     });
   });
 
