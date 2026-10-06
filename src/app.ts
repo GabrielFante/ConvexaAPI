@@ -10,6 +10,10 @@ import { agentAuthMiddleware } from "./shared/middleware/agent-auth";
 import { authMiddleware } from "./shared/middleware/auth";
 import { internalKeyMiddleware } from "./shared/middleware/internal-key";
 import {
+  REQUEST_ID_HEADER,
+  requestIdMiddleware,
+} from "./shared/middleware/request-id";
+import {
   authPrivateRoutes,
   authPublicRoutes,
 } from "./modules/auth/auth.routes";
@@ -35,8 +39,14 @@ const app = express();
 
 app.set("trust proxy", 1);
 
+app.use(requestIdMiddleware);
 app.use(helmet());
-app.use(cors(env.CORS_ORIGINS.length > 0 ? { origin: env.CORS_ORIGINS } : {}));
+app.use(
+  cors({
+    exposedHeaders: [REQUEST_ID_HEADER],
+    ...(env.CORS_ORIGINS.length > 0 ? { origin: env.CORS_ORIGINS } : {}),
+  }),
+);
 app.use(express.json({ limit: "100kb" }));
 
 app.use(healthRoutes);

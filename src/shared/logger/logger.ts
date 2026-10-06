@@ -1,4 +1,5 @@
 import { env } from "../env";
+import { getRequestId } from "../request/request-context";
 
 const REDACTED = "[REDACTED]";
 
@@ -78,10 +79,12 @@ function emit(
   msg: string,
   context: Record<string, unknown>,
 ) {
+  const requestId = getRequestId();
   const line = {
     level,
     time: new Date().toISOString(),
     msg,
+    ...(requestId ? { requestId } : {}),
     ...(redact(context, new WeakSet()) as Record<string, unknown>),
   };
 

@@ -3,7 +3,7 @@
   "info": {
     "title": "Convexa API",
     "version": "1.0.0",
-    "description": "API multi-tenant de agendamento da Convexa. Toda regra de agenda vive aqui: o painel e o n8n apenas consomem estes endpoints.\n\n## Autenticação\n\nQuatro superfícies distintas:\n\n- **`/api/auth/*` públicas** — `register`, `login`, `refresh`, `forgot-password` e `reset-password` não exigem token.\n- **`/api/*`** — exigem `Authorization: Bearer <accessToken>`. O `businessId` sai do próprio token; **não** existe header de tenant.\n- **`/internal/*`** — exigem o header `x-internal-key`. É a superfície do n8n, usada antes de existir um usuário logado.\n- **`/agent/*`** — rotas de agenda consumidas pelo n8n (é ele que fala com a IA, não a API). Exigem `Authorization: Bearer <token>` com o token de `POST /internal/agent-sessions`, que o n8n pede a cada mensagem recebida. O token amarra **o tenant e o cliente da conversa**: o agente nunca informa `businessId` nem `customerId`, então não consegue agir em nome de outra barbearia ou de outro cliente. O token do painel não vale aqui, e este não vale em `/api`.\n\nO `accessToken` expira (veja `expiresIn`, em segundos). Renove com `POST /api/auth/refresh` usando o `refreshToken`, que é rotacionado a cada uso: o token antigo deixa de valer na hora.\n\n## Tempo e fuso\n\nTodo instante trafega em **ISO-8601 com fuso** (`2026-09-22T13:00:00.000Z` ou `-03:00`). Os campos `date`, `startDate` e `endDate` são dias de calendário e usam `YYYY-MM-DD` na entrada.\n\nO cliente **nunca** converte fuso para decidir agenda: mande o instante e deixe a API resolver contra o timezone do negócio.\n\n## Erros\n\nToda falha responde com o mesmo formato:\n\n```json\n{ \"status\": \"error\", \"code\": \"VALIDATION_ERROR\", \"message\": \"Dados de entrada inválidos\", \"issues\": [{ \"field\": \"phone\", \"message\": \"...\" }] }\n```\n\n`issues[]` só aparece em erro de validação. O `409 SLOT_CONFLICT` significa que o horário foi ocupado entre a consulta e a gravação — reconsulte a disponibilidade e ofereça outro horário.\n\n## Paginação\n\n`/customers`, `/services` e `/employees` respondem `{ data, meta }` com `page` (default 1) e `perPage` (default 20, máximo 100). As demais listas ainda não paginam."
+    "description": "API multi-tenant de agendamento da Convexa. Toda regra de agenda vive aqui: o painel e o n8n apenas consomem estes endpoints.\n\n## Autenticação\n\nQuatro superfícies distintas:\n\n- **`/api/auth/*` públicas** — `register`, `login`, `refresh`, `forgot-password` e `reset-password` não exigem token.\n- **`/api/*`** — exigem `Authorization: Bearer <accessToken>`. O `businessId` sai do próprio token; **não** existe header de tenant.\n- **`/internal/*`** — exigem o header `x-internal-key`. É a superfície do n8n, usada antes de existir um usuário logado.\n- **`/agent/*`** — rotas de agenda consumidas pelo n8n (é ele que fala com a IA, não a API). Exigem `Authorization: Bearer <token>` com o token de `POST /internal/agent-sessions`, que o n8n pede a cada mensagem recebida. O token amarra **o tenant e o cliente da conversa**: o agente nunca informa `businessId` nem `customerId`, então não consegue agir em nome de outra barbearia ou de outro cliente. O token do painel não vale aqui, e este não vale em `/api`.\n\nO `accessToken` expira (veja `expiresIn`, em segundos). Renove com `POST /api/auth/refresh` usando o `refreshToken`, que é rotacionado a cada uso: o token antigo deixa de valer na hora.\n\n## Tempo e fuso\n\nTodo instante trafega em **ISO-8601 com fuso** (`2026-09-22T13:00:00.000Z` ou `-03:00`). Os campos `date`, `startDate` e `endDate` são dias de calendário e usam `YYYY-MM-DD` na entrada.\n\nO cliente **nunca** converte fuso para decidir agenda: mande o instante e deixe a API resolver contra o timezone do negócio.\n\n## Erros\n\nToda falha responde com o mesmo formato:\n\n```json\n{ \"status\": \"error\", \"code\": \"VALIDATION_ERROR\", \"message\": \"Dados de entrada inválidos\", \"issues\": [{ \"field\": \"phone\", \"message\": \"...\" }] }\n```\n\n`issues[]` só aparece em erro de validação. O `409 SLOT_CONFLICT` significa que o horário foi ocupado entre a consulta e a gravação — reconsulte a disponibilidade e ofereça outro horário.\n\n## Rastreamento\n\nMande `X-Request-Id` (até 128 caracteres: letras, números, `.`, `_`, `:` e `-`) e a API devolve o mesmo valor no header da resposta e grava em todo log da requisição. Sem o header, ou com valor fora do formato, a API gera um UUID. O erro 500 traz o id também no corpo, em `requestId`. No n8n, use o id da execução para cruzar os dois lados.\n\n## Fluxo do n8n\n\nA API não recebe nem envia mensagens e não fala com a IA. Para cada mensagem do WhatsApp, o n8n:\n\n1. Valida o webhook da Meta (assinatura, duplicata, `statuses[]`) — tudo no n8n.\n2. `POST /internal/agent-sessions` com `phoneNumberId`, telefone e nome de quem escreveu. Guarda o `token` (5 minutos) e usa `now` para a IA entender \"hoje\" e \"amanhã\".\n3. Expõe à IA as rotas `/agent/*` como tools, sempre com o token da sessão:\n   - `GET /agent/services` — o que a barbearia oferece\n   - `GET /agent/availability` — horários livres (`limit` default 3; não aumente sem motivo, a Meta cobra por mensagem)\n   - `GET /agent/appointments` — próximos agendamentos do cliente\n   - `POST /agent/appointments` — agendar\n   - `POST /agent/appointments/{id}/reschedule` — remarcar (nunca cancelar + agendar)\n   - `POST /agent/appointments/{id}/cancel` — cancelar\n4. Antes de responder ao cliente, `POST /internal/messages/quota`. Com **402**, não envie.\n5. `GET /internal/integrations/by-phone-number-id/{phoneNumberId}` e envia à Meta com o `metaAccessToken`. Não grave o token no n8n nem deixe aparecer no log da execução.\n\nComo reagir:\n\n| Resposta | O que fazer |\n|---|---|\n| `401` em `/agent/*` | O token expirou: abra outra sessão e repita a chamada |\n| `409` ao agendar ou remarcar | Horário ocupado: reconsulte `/agent/availability` e ofereça outro |\n| `404` em `agent-sessions` ou `integrations` | Número sem empresa ou sem token cadastrado: não responda ao cliente e alerte a equipe |\n| `402` em `quota` | Limite do mês atingido: não envie |\n| `5xx` | Repita com espera; informe o `requestId` ao investigar |\n\n## Paginação\n\n`/customers`, `/services` e `/employees` respondem `{ data, meta }` com `page` (default 1) e `perPage` (default 20, máximo 100). As demais listas ainda não paginam."
   },
   "servers": [
     {
@@ -121,6 +121,10 @@
               ],
               "additionalProperties": false
             }
+          },
+          "requestId": {
+            "description": "Só no erro 500: o mesmo valor do header X-Request-Id",
+            "type": "string"
           }
         },
         "required": [
@@ -6791,6 +6795,129 @@
           },
           "409": {
             "description": "O agendamento não está em um estado que permita cancelar",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Limite de requisições excedido",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "O banco de dados demorou para responder",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agent/appointments/{id}/reschedule": {
+      "post": {
+        "tags": [
+          "agent"
+        ],
+        "summary": "Reagenda um agendamento do cliente da conversa",
+        "description": "Move o agendamento numa única operação, sem soltar o horário antigo antes de garantir o novo — não use cancelar + agendar para isso. Mantém serviço, preço e duração congelados; sem `employeeId`, fica com o mesmo funcionário. Agendamento de outro cliente responde 404. Responde 409 se o novo horário foi ocupado — reconsulte `/agent/availability`",
+        "operationId": "agentRescheduleAppointment",
+        "security": [
+          {
+            "agentToken": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "startAt": {
+                    "type": "string",
+                    "format": "date-time",
+                    "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d(?::[0-5]\\d(?:\\.\\d+)?)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                  },
+                  "employeeId": {
+                    "type": "string",
+                    "format": "uuid",
+                    "pattern": "^([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}|00000000-0000-0000-0000-000000000000|ffffffff-ffff-ffff-ffff-ffffffffffff)$"
+                  }
+                },
+                "required": [
+                  "startAt"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Agendamento reagendado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentAppointment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Dados de entrada inválidos. O corpo traz issues[] com field e message",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Token do agente ausente, inválido ou expirado",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Registro não encontrado neste tenant",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiError"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Horário ocupado ou agendamento em estado que não permite reagendar",
             "content": {
               "application/json": {
                 "schema": {

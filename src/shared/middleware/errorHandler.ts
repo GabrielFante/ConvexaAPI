@@ -10,6 +10,7 @@ import {
   SERIALIZATION_FAILURE,
 } from "../database/sqlstate";
 import { logger } from "../logger/logger";
+import { getRequestId } from "../request/request-context";
 
 const SLOT_TAKEN_MESSAGE =
   "Este horário acabou de ser ocupado. Escolha outro horário e tente novamente";
@@ -46,6 +47,17 @@ const prismaErrors: Record<
   },
 };
 
+function internalError() {
+  const requestId = getRequestId();
+
+  return {
+    status: "error",
+    code: "INTERNAL_ERROR",
+    message: "Erro interno do servidor",
+    ...(requestId ? { requestId } : {}),
+  };
+}
+
 function isPayloadTooLarge(err: unknown): boolean {
   return (
     typeof err === "object" &&
@@ -68,11 +80,7 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
     if (err.statusCode >= 500) {
       logger.error("Falha interna sinalizada pela aplicacao", err);
 
-      res.status(err.statusCode).json({
-        status: "error",
-        code: "INTERNAL_ERROR",
-        message: "Erro interno do servidor",
-      });
+      res.status(err.statusCode).json(internalError());
       return;
     }
 
@@ -166,9 +174,5 @@ export const errorHandler: ErrorRequestHandler = (err, _req, res, _next) => {
 
   logger.error("Erro nao tratado", err);
 
-  res.status(500).json({
-    status: "error",
-    code: "INTERNAL_ERROR",
-    message: "Erro interno do servidor",
-  });
+  res.status(500).json(internalError());
 };
