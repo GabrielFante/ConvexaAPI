@@ -8,6 +8,8 @@ O Compose desta branch usa PostgreSQL 16 próprio com volume persistente, e não
 
 A main foi integrada a esta branch até e3d6866 (PR #1, 85e5b9d). Nenhum commit da main ficou de fora. Como o autodeploy está desligado, isso não publica nada: o staging só recebe a versão nova no próximo Deploy manual. Antes dele, fazer backup do banco, porque entram duas migrations que apagam dados (20261005150000_drop_inbound_message e 20261005160000_drop_ai_system_prompt). O serviço migrate aplica as cinco migrations de 05/10 antes de subir a API.
 
+Em 20/10/2026 a main foi integrada de novo, até 77b68fe. Entram a cifra das credenciais da Meta (457d516) e a mudança das rotas de agenda do n8n para `/internal/conversation/*` (a62b827). **Antes do próximo Deploy manual, a variável `CREDENTIALS_ENCRYPTION_KEY` precisa existir no Environment do Dokploy**: 32 bytes em base64, gerada à parte e diferente do `JWT_SECRET` e da `INTERNAL_API_KEY`. Sem ela o Compose recusa subir. Guarde a chave com cuidado, porque perdê-la ou trocá-la torna ilegíveis as credenciais já gravadas. A imagem de runtime não traz o `npm run credentials:encrypt`; se o staging já tiver credenciais da Meta gravadas em texto puro, cadastre-as de novo via `PATCH /api/business` depois do deploy. Esta integração não traz migration nova.
+
 Resend continua dispensado: com PASSWORD_RESET_ENABLED=false e sem MAIL_DRIVER, a validação de ambiente não exige RESEND_API_KEY.
 
 ## Verificação reproduzível
@@ -18,16 +20,16 @@ O script somente consulta /health/ready, exige HTTPS, rejeita redirecionamentos 
 
 ## Fronteira API × n8n (decisão de 05/10/2026)
 
-A API não recebe nem envia mensagens do WhatsApp e não fala com a IA. O n8n orquestra tudo: recebe o webhook da Meta, chama a IA, consulta a API e envia a resposta.
+A API não recebe nem envia mensagens do WhatsApp e não fala com a IA. O n8n orquestra tudo: recebe o webhook da Meta, chama a IA, consulta a API e envia a resposta. Só o painel (`/api`) e o n8n (`/internal`) falam com a API. A IA roda dentro do n8n, e a `x-internal-key` e o token da conversa nunca entram no prompt.
 
-A API cuida da agenda, do cadastro do negócio e guarda as credenciais da Meta de cada empresa. O n8n usa:
+A API cuida da agenda, do cadastro do negócio e guarda as credenciais da Meta de cada empresa. O n8n usa, sempre com a `x-internal-key`:
 
-| Momento                      | Rota da API                                                                               |
-| ---------------------------- | ----------------------------------------------------------------------------------------- |
-| Mensagem chegou              | `POST /internal/agent-sessions` (tenant pelo `phoneNumberId`, cliente pelo telefone)      |
-| Consultar ou mexer na agenda | `/agent/*` com o token da sessão                                                          |
-| Antes de enviar              | `POST /internal/messages/quota` (402 = não envie)                                         |
-| Na hora de enviar            | `GET /internal/integrations/by-phone-number-id/:phoneNumberId` (token da Meta, sem cache) |
+| Momento                      | Rota da API                                                                                |
+| ---------------------------- | ------------------------------------------------------------------------------------------ |
+| Mensagem chegou              | `POST /internal/conversation/session` (tenant pelo `phoneNumberId`, cliente pelo telefone) |
+| Consultar ou mexer na agenda | `/internal/conversation/*` com a chave **e** `Authorization: Bearer <token da sessão>`     |
+| Antes de enviar              | `POST /internal/messages/quota` (402 = não envie)                                          |
+| Na hora de enviar            | `GET /internal/integrations/by-phone-number-id/:phoneNumberId` (token da Meta, sem cache)  |
 
 O token da Meta não fica gravado no n8n: é buscado a cada envio e não deve aparecer em log de execução.
 

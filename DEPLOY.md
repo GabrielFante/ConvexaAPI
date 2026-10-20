@@ -4,7 +4,7 @@ Branch `deploy/dokploy-pilot`; main preservada. Serviço Compose, arquivo `docke
 
 ## Ambiente
 
-Gerar separadamente POSTGRES_PASSWORD, APP_DB_PASSWORD (hexadecimal), JWT_SECRET e INTERNAL_API_KEY (32+ caracteres). Não guardar no Git. CORS_ORIGINS e APP_URL inicialmente usam https://api-convexa.altvia.cloud, somente como origem provisória restritiva: substituir pela origem real do frontend quando o grupo informar. Não há frontend neste repositório.
+Gerar separadamente POSTGRES_PASSWORD, APP_DB_PASSWORD (hexadecimal), JWT_SECRET e INTERNAL_API_KEY (32+ caracteres) e CREDENTIALS_ENCRYPTION_KEY (32 bytes em base64: `node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"`). Não guardar no Git. A CREDENTIALS_ENCRYPTION_KEY cifra as credenciais da Meta no banco: perdê-la ou trocá-la obriga a cadastrar as credenciais de novo. CORS_ORIGINS e APP_URL inicialmente usam https://api-convexa.altvia.cloud, somente como origem provisória restritiva: substituir pela origem real do frontend quando o grupo informar. Não há frontend neste repositório.
 
 PASSWORD_RESET_ENABLED=false está explícito no Compose. Sem Resend ou SMTP configurado. Forgot/reset retornam 503 antes de consultar contas ou gerar tokens. Cadastro e login permanecem disponíveis. Não utilizar o Resend administrativo do Dokploy.
 
@@ -29,7 +29,14 @@ GET `/health`; POST `/api/auth/register`; POST `/api/auth/login`; GET `/api/auth
 Payload de cadastro (substituir os exemplos):
 
 ```json
-{"business":{"name":"Empresa de teste","slug":"empresa-teste-grupo"},"owner":{"name":"Responsavel","email":"aluno@example.com","password":"SUBSTITUA-POR-SENHA-UNICA"}}
+{
+  "business": { "name": "Empresa de teste", "slug": "empresa-teste-grupo" },
+  "owner": {
+    "name": "Responsavel",
+    "email": "aluno@example.com",
+    "password": "SUBSTITUA-POR-SENHA-UNICA"
+  }
+}
 ```
 
 Cadastro retorna accessToken e refreshToken: não compartilhar/publicar. Rota `/internal` exige INTERNAL_API_KEY, nunca colocar essa chave no frontend. Nenhuma integração Meta/WhatsApp/IA foi provisionada.
