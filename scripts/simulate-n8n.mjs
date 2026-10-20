@@ -39,9 +39,8 @@ function createClient(base, internalKey) {
         Accept: "application/json",
         "X-Request-Id": requestId,
         ...(body ? { "Content-Type": "application/json" } : {}),
-        ...(token
-          ? { Authorization: `Bearer ${token}` }
-          : { "x-internal-key": internalKey }),
+        "x-internal-key": internalKey,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
     });
@@ -69,9 +68,9 @@ async function simulate({
 
   try {
     const session = await call(
-      "agent-sessions",
+      "conversation-session",
       "POST",
-      "/internal/agent-sessions",
+      "/internal/conversation/session",
       {
         body: { phoneNumberId, phone, name: "Simulação n8n" },
       },
@@ -81,9 +80,14 @@ async function simulate({
       `sessão aberta para ${session.business.name}, agora ${session.now.date} ${session.now.time}`,
     );
 
-    const services = await call("services", "GET", "/agent/services", {
-      token,
-    });
+    const services = await call(
+      "services",
+      "GET",
+      "/internal/conversation/services",
+      {
+        token,
+      },
+    );
     if (services.length === 0)
       throw new Error("A empresa não tem serviço ativo");
     const service = services[0];
@@ -93,7 +97,7 @@ async function simulate({
     const availability = await call(
       "availability",
       "GET",
-      "/agent/availability",
+      "/internal/conversation/availability",
       {
         token,
         query: { serviceId: service.id, date: day, limit: 2 },
@@ -106,7 +110,7 @@ async function simulate({
       `${availability.totalSlots} horários livres em ${availability.weekday} ${day}`,
     );
 
-    booked = await call("book", "POST", "/agent/appointments", {
+    booked = await call("book", "POST", "/internal/conversation/appointments", {
       token,
       body: {
         serviceId: service.id,
@@ -116,9 +120,14 @@ async function simulate({
     });
     log(`agendado às ${booked.time} com ${booked.employee.name}`);
 
-    const upcoming = await call("appointments", "GET", "/agent/appointments", {
-      token,
-    });
+    const upcoming = await call(
+      "appointments",
+      "GET",
+      "/internal/conversation/appointments",
+      {
+        token,
+      },
+    );
     if (!upcoming.some(({ id }) => id === booked.id)) {
       throw new Error("O agendamento criado não aparece na lista do cliente");
     }
@@ -128,7 +137,7 @@ async function simulate({
       const moved = await call(
         "reschedule",
         "POST",
-        `/agent/appointments/${booked.id}/reschedule`,
+        `/internal/conversation/appointments/${booked.id}/reschedule`,
         {
           token,
           body: { startAt: second.startAt, employeeId: second.employeeId },
@@ -142,7 +151,7 @@ async function simulate({
     const cancelled = await call(
       "cancel",
       "POST",
-      `/agent/appointments/${booked.id}/cancel`,
+      `/internal/conversation/appointments/${booked.id}/cancel`,
       { token },
     );
     booked = undefined;
@@ -170,15 +179,20 @@ async function simulate({
   } finally {
     if (booked) {
       const token = (
-        await call("agent-sessions", "POST", "/internal/agent-sessions", {
-          body: { phoneNumberId, phone },
-        }).catch(() => ({}))
+        await call(
+          "conversation-session",
+          "POST",
+          "/internal/conversation/session",
+          {
+            body: { phoneNumberId, phone },
+          },
+        ).catch(() => ({}))
       ).token;
       if (token) {
         await call(
           "cancel",
           "POST",
-          `/agent/appointments/${booked.id}/cancel`,
+          `/internal/conversation/appointments/${booked.id}/cancel`,
           { token },
         ).catch(() => {});
       }

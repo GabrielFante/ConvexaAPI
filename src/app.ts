@@ -6,7 +6,7 @@ import { docsEnabled, env } from "./shared/env";
 import { AppError } from "./shared/errors/AppError";
 import { healthRoutes } from "./shared/health/health.routes";
 import { openApiRoutes } from "./shared/openapi/openapi.routes";
-import { agentAuthMiddleware } from "./shared/middleware/agent-auth";
+import { conversationAuthMiddleware } from "./shared/middleware/conversation-auth";
 import { authMiddleware } from "./shared/middleware/auth";
 import { internalKeyMiddleware } from "./shared/middleware/internal-key";
 import {
@@ -27,7 +27,10 @@ import { customerRoutes } from "./modules/customer/customer.routes";
 import { timeBlockRoutes } from "./modules/timeblock/timeblock.routes";
 import { appointmentRoutes } from "./modules/appointment/appointment.routes";
 import { schedulingRoutes } from "./modules/scheduling/scheduling.routes";
-import { agentInternalRoutes, agentRoutes } from "./modules/agent/agent.routes";
+import {
+  conversationRoutes,
+  conversationSessionRoutes,
+} from "./modules/conversation/conversation.routes";
 import { quotaInternalRoutes, quotaRoutes } from "./modules/quota/quota.routes";
 import { integrationInternalRoutes } from "./modules/integration/integration.routes";
 import {
@@ -84,8 +87,6 @@ const apiRateLimit = createRateLimit(15 * 60 * 1000, 300, TOO_MANY_REQUESTS);
 
 const internalRateLimit = createRateLimit(60 * 1000, 600, TOO_MANY_REQUESTS);
 
-const agentRateLimit = createRateLimit(60 * 1000, 600, TOO_MANY_REQUESTS);
-
 app.use("/api/auth/forgot-password", passwordResetRateLimit);
 app.use("/api/auth", authRateLimit, authPublicRoutes);
 app.use(
@@ -93,11 +94,15 @@ app.use(
   internalRateLimit,
   internalKeyMiddleware,
   businessInternalRoutes,
-  agentInternalRoutes,
+  conversationSessionRoutes,
   quotaInternalRoutes,
   integrationInternalRoutes,
 );
-app.use("/agent", agentRateLimit, agentAuthMiddleware, agentRoutes);
+app.use(
+  "/internal/conversation",
+  conversationAuthMiddleware,
+  conversationRoutes,
+);
 
 const apiRoutes = Router();
 apiRoutes.use(apiRateLimit);

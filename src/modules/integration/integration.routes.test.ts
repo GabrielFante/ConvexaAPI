@@ -13,7 +13,7 @@ vi.mock("./integration.repository", () => ({
 
 import { app } from "../../app";
 import { env } from "../../shared/env";
-import { signAgentToken } from "../../shared/auth/agent-token";
+import { signConversationToken } from "../../shared/auth/conversation-token";
 import { bearer, TENANT_A } from "../../test/http";
 
 const PATH = "/internal/integrations/by-phone-number-id/111111111";
@@ -96,8 +96,8 @@ describe("GET /internal/integrations/by-phone-number-id/:phoneNumberId", () => {
     ).not.toHaveBeenCalled();
   });
 
-  it("recusa token de sessão do agente", async () => {
-    const token = signAgentToken({
+  it("recusa token de sessão da conversa", async () => {
+    const token = signConversationToken({
       businessId: TENANT_A,
       customerId: "cccccccc-1111-4111-8111-111111111111",
       timezone: "America/Sao_Paulo",

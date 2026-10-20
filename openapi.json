@@ -3,7 +3,7 @@
   "info": {
     "title": "Convexa API",
     "version": "1.0.0",
-    "description": "API multi-tenant de agendamento da Convexa. Toda regra de agenda vive aqui: o painel e o n8n apenas consomem estes endpoints.\n\n## Autenticação\n\nQuatro superfícies distintas:\n\n- **`/api/auth/*` públicas** — `register`, `login`, `refresh`, `forgot-password` e `reset-password` não exigem token.\n- **`/api/*`** — exigem `Authorization: Bearer <accessToken>`. O `businessId` sai do próprio token; **não** existe header de tenant.\n- **`/internal/*`** — exigem o header `x-internal-key`. É a superfície do n8n, usada antes de existir um usuário logado.\n- **`/agent/*`** — rotas de agenda consumidas pelo n8n (é ele que fala com a IA, não a API). Exigem `Authorization: Bearer <token>` com o token de `POST /internal/agent-sessions`, que o n8n pede a cada mensagem recebida. O token amarra **o tenant e o cliente da conversa**: o agente nunca informa `businessId` nem `customerId`, então não consegue agir em nome de outra barbearia ou de outro cliente. O token do painel não vale aqui, e este não vale em `/api`.\n\nO `accessToken` expira (veja `expiresIn`, em segundos). Renove com `POST /api/auth/refresh` usando o `refreshToken`, que é rotacionado a cada uso: o token antigo deixa de valer na hora.\n\n## Tempo e fuso\n\nTodo instante trafega em **ISO-8601 com fuso** (`2026-09-22T13:00:00.000Z` ou `-03:00`). Os campos `date`, `startDate` e `endDate` são dias de calendário e usam `YYYY-MM-DD` na entrada.\n\nO cliente **nunca** converte fuso para decidir agenda: mande o instante e deixe a API resolver contra o timezone do negócio.\n\n## Erros\n\nToda falha responde com o mesmo formato:\n\n```json\n{ \"status\": \"error\", \"code\": \"VALIDATION_ERROR\", \"message\": \"Dados de entrada inválidos\", \"issues\": [{ \"field\": \"phone\", \"message\": \"...\" }] }\n```\n\n`issues[]` só aparece em erro de validação. O `409 SLOT_CONFLICT` significa que o horário foi ocupado entre a consulta e a gravação — reconsulte a disponibilidade e ofereça outro horário.\n\n## Rastreamento\n\nMande `X-Request-Id` (até 128 caracteres: letras, números, `.`, `_`, `:` e `-`) e a API devolve o mesmo valor no header da resposta e grava em todo log da requisição. Sem o header, ou com valor fora do formato, a API gera um UUID. O erro 500 traz o id também no corpo, em `requestId`. No n8n, use o id da execução para cruzar os dois lados.\n\n## Fluxo do n8n\n\nA API não recebe nem envia mensagens e não fala com a IA. Para cada mensagem do WhatsApp, o n8n:\n\n1. Valida o webhook da Meta (assinatura, duplicata, `statuses[]`) — tudo no n8n.\n2. `POST /internal/agent-sessions` com `phoneNumberId`, telefone e nome de quem escreveu. Guarda o `token` (5 minutos) e usa `now` para a IA entender \"hoje\" e \"amanhã\".\n3. Expõe à IA as rotas `/agent/*` como tools, sempre com o token da sessão:\n   - `GET /agent/services` — o que a barbearia oferece\n   - `GET /agent/availability` — horários livres (`limit` default 3; não aumente sem motivo, a Meta cobra por mensagem)\n   - `GET /agent/appointments` — próximos agendamentos do cliente\n   - `POST /agent/appointments` — agendar\n   - `POST /agent/appointments/{id}/reschedule` — remarcar (nunca cancelar + agendar)\n   - `POST /agent/appointments/{id}/cancel` — cancelar\n4. Antes de responder ao cliente, `POST /internal/messages/quota`. Com **402**, não envie.\n5. `GET /internal/integrations/by-phone-number-id/{phoneNumberId}` e envia à Meta com o `metaAccessToken`. Não grave o token no n8n nem deixe aparecer no log da execução.\n\nComo reagir:\n\n| Resposta | O que fazer |\n|---|---|\n| `401` em `/agent/*` | O token expirou: abra outra sessão e repita a chamada |\n| `409` ao agendar ou remarcar | Horário ocupado: reconsulte `/agent/availability` e ofereça outro |\n| `404` em `agent-sessions` ou `integrations` | Número sem empresa ou sem token cadastrado: não responda ao cliente e alerte a equipe |\n| `402` em `quota` | Limite do mês atingido: não envie |\n| `5xx` | Repita com espera; informe o `requestId` ao investigar |\n\n## Paginação\n\n`/customers`, `/services` e `/employees` respondem `{ data, meta }` com `page` (default 1) e `perPage` (default 20, máximo 100). As demais listas ainda não paginam."
+    "description": "API multi-tenant de agendamento da Convexa. Toda regra de agenda vive aqui: o painel e o n8n apenas consomem estes endpoints.\n\n## Autenticação\n\nSó dois consumidores falam com esta API: o painel e o n8n. A IA vive dentro do n8n e nunca chama a API.\n\n- **`/api/auth/*` públicas** — `register`, `login`, `refresh`, `forgot-password` e `reset-password` não exigem token.\n- **`/api/*`** — o painel. Exigem `Authorization: Bearer <accessToken>`. O `businessId` sai do próprio token; **não** existe header de tenant.\n- **`/internal/*`** — o n8n. Toda rota exige o header `x-internal-key`.\n- **`/internal/conversation/*`** — rotas de agenda do n8n. Exigem a `x-internal-key` **e** `Authorization: Bearer <token>` com o token de `POST /internal/conversation/session`, que o n8n pede a cada mensagem recebida. A chave prova que quem chama é o n8n; o token amarra **o tenant e o cliente da conversa**, então nenhuma chamada informa `businessId` nem `customerId` e não dá para agir em nome de outra barbearia ou de outro cliente. Um token sem a chave não abre nada. O token do painel não vale aqui, e este não vale em `/api`.\n\nO `accessToken` expira (veja `expiresIn`, em segundos). Renove com `POST /api/auth/refresh` usando o `refreshToken`, que é rotacionado a cada uso: o token antigo deixa de valer na hora.\n\n## Tempo e fuso\n\nTodo instante trafega em **ISO-8601 com fuso** (`2026-09-22T13:00:00.000Z` ou `-03:00`). Os campos `date`, `startDate` e `endDate` são dias de calendário e usam `YYYY-MM-DD` na entrada.\n\nO cliente **nunca** converte fuso para decidir agenda: mande o instante e deixe a API resolver contra o timezone do negócio.\n\n## Erros\n\nToda falha responde com o mesmo formato:\n\n```json\n{ \"status\": \"error\", \"code\": \"VALIDATION_ERROR\", \"message\": \"Dados de entrada inválidos\", \"issues\": [{ \"field\": \"phone\", \"message\": \"...\" }] }\n```\n\n`issues[]` só aparece em erro de validação. O `409 SLOT_CONFLICT` significa que o horário foi ocupado entre a consulta e a gravação — reconsulte a disponibilidade e ofereça outro horário.\n\n## Rastreamento\n\nMande `X-Request-Id` (até 128 caracteres: letras, números, `.`, `_`, `:` e `-`) e a API devolve o mesmo valor no header da resposta e grava em todo log da requisição. Sem o header, ou com valor fora do formato, a API gera um UUID. O erro 500 traz o id também no corpo, em `requestId`. No n8n, use o id da execução para cruzar os dois lados.\n\n## Fluxo do n8n\n\nA API não recebe nem envia mensagens e não fala com a IA. O n8n orquestra: a IA, dentro do n8n, só interpreta a mensagem e diz qual ação o cliente quer; quem faz a requisição HTTP é sempre o n8n. A `x-internal-key` e o token da conversa nunca entram no prompt nem são enviados ao provedor de IA. Para cada mensagem do WhatsApp, o n8n:\n\n1. Valida o webhook da Meta (assinatura, duplicata, `statuses[]`) — tudo no n8n.\n2. `POST /internal/conversation/session` com `phoneNumberId`, telefone e nome de quem escreveu. Guarda o `token` (5 minutos) e repassa `now` à IA para ela entender \"hoje\" e \"amanhã\".\n3. Chama as rotas de agenda conforme a intenção, sempre com a `x-internal-key` e o token da sessão:\n   - `GET /internal/conversation/services` — o que a barbearia oferece\n   - `GET /internal/conversation/availability` — horários livres (`limit` default 3; não aumente sem motivo, a Meta cobra por mensagem)\n   - `GET /internal/conversation/appointments` — próximos agendamentos do cliente\n   - `POST /internal/conversation/appointments` — agendar\n   - `POST /internal/conversation/appointments/{id}/reschedule` — remarcar (nunca cancelar + agendar)\n   - `POST /internal/conversation/appointments/{id}/cancel` — cancelar\n4. Antes de responder ao cliente, `POST /internal/messages/quota`. Com **402**, não envie.\n5. `GET /internal/integrations/by-phone-number-id/{phoneNumberId}` e envia à Meta com o `metaAccessToken`. Não grave o token no n8n nem deixe aparecer no log da execução.\n\nComo reagir:\n\n| Resposta | O que fazer |\n|---|---|\n| `401` em `/internal/conversation/*` | O token expirou: abra outra sessão e repita a chamada |\n| `409` ao agendar ou remarcar | Horário ocupado: reconsulte `/internal/conversation/availability` e ofereça outro |\n| `404` em `conversation/session` ou `integrations` | Número sem empresa ou sem token cadastrado: não responda ao cliente e alerte a equipe |\n| `402` em `quota` | Limite do mês atingido: não envie |\n| `5xx` | Repita com espera; informe o `requestId` ao investigar |\n\n## Paginação\n\n`/customers`, `/services` e `/employees` respondem `{ data, meta }` com `page` (default 1) e `perPage` (default 20, máximo 100). As demais listas ainda não paginam."
   },
   "servers": [
     {
@@ -53,8 +53,8 @@
       "description": "Consulta de disponibilidade"
     },
     {
-      "name": "agent",
-      "description": "Rotas de agenda consumidas pelo n8n (token de sessão do agente)"
+      "name": "conversation",
+      "description": "Rotas de agenda do n8n (x-internal-key + token da conversa)"
     },
     {
       "name": "quota",
@@ -80,11 +80,11 @@
         "name": "x-internal-key",
         "description": "Chave de serviço do n8n. Não é um JWT"
       },
-      "agentToken": {
+      "conversationToken": {
         "type": "http",
         "scheme": "bearer",
         "bearerFormat": "JWT",
-        "description": "token devolvido por POST /internal/agent-sessions. Vale 5 minutos e só para uma conversa"
+        "description": "token devolvido por POST /internal/conversation/session. Vale 5 minutos e só para uma conversa; sempre junto da x-internal-key"
       }
     },
     "schemas": {
@@ -1091,7 +1091,7 @@
         ],
         "additionalProperties": false
       },
-      "AgentSession": {
+      "ConversationSession": {
         "type": "object",
         "properties": {
           "token": {
@@ -1186,7 +1186,7 @@
         ],
         "additionalProperties": false
       },
-      "AgentService": {
+      "ConversationService": {
         "type": "object",
         "properties": {
           "id": {
@@ -1216,7 +1216,7 @@
         ],
         "additionalProperties": false
       },
-      "AgentAvailability": {
+      "ConversationAvailability": {
         "type": "object",
         "properties": {
           "date": {
@@ -1290,7 +1290,7 @@
         ],
         "additionalProperties": false
       },
-      "AgentAppointment": {
+      "ConversationAppointment": {
         "type": "object",
         "properties": {
           "id": {
@@ -2345,7 +2345,7 @@
           "business"
         ],
         "summary": "Atualiza a empresa",
-        "description": "Apenas OWNER. metaAccessToken e metaAppSecret são aceitos aqui e guardados separados — nunca voltam em nenhuma resposta",
+        "description": "Apenas OWNER. metaAccessToken e metaAppSecret são aceitos aqui e guardados separados e cifrados — nunca voltam em nenhuma resposta",
         "operationId": "updateBusiness",
         "requestBody": {
           "required": true,
@@ -4574,7 +4574,7 @@
           "customer"
         ],
         "summary": "Busca ou cria o cliente pelo telefone",
-        "description": "Endpoint do agente de IA, que só conhece o número de quem mandou mensagem. Idempotente: devolve o cliente existente ou cria um novo. Responde 200 nos dois casos",
+        "description": "Para quem só conhece o número de quem mandou mensagem. Idempotente: devolve o cliente existente ou cria um novo. Responde 200 nos dois casos",
         "operationId": "resolveCustomer",
         "requestBody": {
           "required": true,
@@ -6125,7 +6125,7 @@
           "scheduling"
         ],
         "summary": "Horários livres de um serviço num dia",
-        "description": "Única fonte de verdade sobre disponibilidade: o agente de IA nunca calcula horário por conta própria.\n\n**Atenção ao `limit`, que tem default 3.** O WhatsApp fica no default de propósito, porque a Meta cobra por mensagem e listar o dia inteiro fica caro e ilegível. O painel deve mandar `limit` explícito (máximo 100) para ver o dia todo.\n\n`totalSlots` sempre traz o total real encontrado, mesmo quando `slots` vem recortado pelo `limit`. Sem `employeeId`, devolve os horários de todos os funcionários habilitados para o serviço.",
+        "description": "Única fonte de verdade sobre disponibilidade: nem o n8n nem a IA calculam horário por conta própria.\n\n**Atenção ao `limit`, que tem default 3.** O WhatsApp fica no default de propósito, porque a Meta cobra por mensagem e listar o dia inteiro fica caro e ilegível. O painel deve mandar `limit` explícito (máximo 100) para ver o dia todo.\n\n`totalSlots` sempre traz o total real encontrado, mesmo quando `slots` vem recortado pelo `limit`. Sem `employeeId`, devolve os horários de todos os funcionários habilitados para o serviço.",
         "operationId": "getAvailability",
         "parameters": [
           {
@@ -6243,15 +6243,15 @@
         }
       }
     },
-    "/internal/agent-sessions": {
+    "/internal/conversation/session": {
       "post": {
         "tags": [
           "internal",
-          "agent"
+          "conversation"
         ],
-        "summary": "Abre a sessão do agente para uma mensagem recebida",
-        "description": "Chamada pelo n8n a cada mensagem do WhatsApp. Resolve o tenant pelo `phoneNumberId` da Meta, faz o upsert do cliente pelo telefone de quem escreveu e devolve um token de 5 minutos que amarra os dois. Traz também o `now` já no fuso da empresa, para o agente interpretar \"amanhã\" sem converter fuso",
-        "operationId": "createAgentSession",
+        "summary": "Abre a sessão da conversa para uma mensagem recebida",
+        "description": "Chamada pelo n8n a cada mensagem do WhatsApp. Resolve o tenant pelo `phoneNumberId` da Meta, faz o upsert do cliente pelo telefone de quem escreveu e devolve um token de 5 minutos que amarra os dois. Traz também o `now` já no fuso da empresa, para a IA interpretar \"amanhã\" sem converter fuso",
+        "operationId": "createConversationSession",
         "security": [
           {
             "internalKey": []
@@ -6292,7 +6292,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgentSession"
+                  "$ref": "#/components/schemas/ConversationSession"
                 }
               }
             }
@@ -6350,16 +6350,17 @@
         }
       }
     },
-    "/agent/services": {
+    "/internal/conversation/services": {
       "get": {
         "tags": [
-          "agent"
+          "conversation"
         ],
         "summary": "Catálogo de serviços ativos",
-        "operationId": "agentListServices",
+        "operationId": "conversationListServices",
         "security": [
           {
-            "agentToken": []
+            "internalKey": [],
+            "conversationToken": []
           }
         ],
         "responses": {
@@ -6370,7 +6371,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/AgentService"
+                    "$ref": "#/components/schemas/ConversationService"
                   }
                 }
               }
@@ -6387,7 +6388,7 @@
             }
           },
           "401": {
-            "description": "Token do agente ausente, inválido ou expirado",
+            "description": "Chave interna ou token da conversa ausente, inválido ou expirado",
             "content": {
               "application/json": {
                 "schema": {
@@ -6419,17 +6420,18 @@
         }
       }
     },
-    "/agent/availability": {
+    "/internal/conversation/availability": {
       "get": {
         "tags": [
-          "agent"
+          "conversation"
         ],
         "summary": "Horários livres de um serviço num dia",
         "description": "Mesma regra de `/api/availability`, com `limit` default 3 e **máximo 10** — a Meta cobra por mensagem. Cada slot já vem com `time` no fuso da empresa e o nome do funcionário",
-        "operationId": "agentGetAvailability",
+        "operationId": "conversationGetAvailability",
         "security": [
           {
-            "agentToken": []
+            "internalKey": [],
+            "conversationToken": []
           }
         ],
         "parameters": [
@@ -6480,7 +6482,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgentAvailability"
+                  "$ref": "#/components/schemas/ConversationAvailability"
                 }
               }
             }
@@ -6496,7 +6498,7 @@
             }
           },
           "401": {
-            "description": "Token do agente ausente, inválido ou expirado",
+            "description": "Chave interna ou token da conversa ausente, inválido ou expirado",
             "content": {
               "application/json": {
                 "schema": {
@@ -6538,16 +6540,17 @@
         }
       }
     },
-    "/agent/appointments": {
+    "/internal/conversation/appointments": {
       "get": {
         "tags": [
-          "agent"
+          "conversation"
         ],
         "summary": "Próximos agendamentos ativos do cliente da conversa",
-        "operationId": "agentListAppointments",
+        "operationId": "conversationListAppointments",
         "security": [
           {
-            "agentToken": []
+            "internalKey": [],
+            "conversationToken": []
           }
         ],
         "responses": {
@@ -6558,7 +6561,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "$ref": "#/components/schemas/AgentAppointment"
+                    "$ref": "#/components/schemas/ConversationAppointment"
                   }
                 }
               }
@@ -6575,7 +6578,7 @@
             }
           },
           "401": {
-            "description": "Token do agente ausente, inválido ou expirado",
+            "description": "Chave interna ou token da conversa ausente, inválido ou expirado",
             "content": {
               "application/json": {
                 "schema": {
@@ -6608,14 +6611,15 @@
       },
       "post": {
         "tags": [
-          "agent"
+          "conversation"
         ],
         "summary": "Agenda para o cliente da conversa",
-        "description": "Passa pelo Scheduling Engine como qualquer agendamento. O cliente sai do token, não do corpo. Responde 409 se o horário foi ocupado — reconsulte `/agent/availability`",
-        "operationId": "agentBookAppointment",
+        "description": "Passa pelo Scheduling Engine como qualquer agendamento. O cliente sai do token, não do corpo. Responde 409 se o horário foi ocupado — reconsulte `/internal/conversation/availability`",
+        "operationId": "conversationBookAppointment",
         "security": [
           {
-            "agentToken": []
+            "internalKey": [],
+            "conversationToken": []
           }
         ],
         "requestBody": {
@@ -6660,7 +6664,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgentAppointment"
+                  "$ref": "#/components/schemas/ConversationAppointment"
                 }
               }
             }
@@ -6676,7 +6680,7 @@
             }
           },
           "401": {
-            "description": "Token do agente ausente, inválido ou expirado",
+            "description": "Chave interna ou token da conversa ausente, inválido ou expirado",
             "content": {
               "application/json": {
                 "schema": {
@@ -6728,17 +6732,18 @@
         }
       }
     },
-    "/agent/appointments/{id}/cancel": {
+    "/internal/conversation/appointments/{id}/cancel": {
       "post": {
         "tags": [
-          "agent"
+          "conversation"
         ],
         "summary": "Cancela um agendamento do cliente da conversa",
         "description": "Agendamento de outro cliente responde 404, igual a um id inexistente",
-        "operationId": "agentCancelAppointment",
+        "operationId": "conversationCancelAppointment",
         "security": [
           {
-            "agentToken": []
+            "internalKey": [],
+            "conversationToken": []
           }
         ],
         "parameters": [
@@ -6758,7 +6763,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgentAppointment"
+                  "$ref": "#/components/schemas/ConversationAppointment"
                 }
               }
             }
@@ -6774,7 +6779,7 @@
             }
           },
           "401": {
-            "description": "Token do agente ausente, inválido ou expirado",
+            "description": "Chave interna ou token da conversa ausente, inválido ou expirado",
             "content": {
               "application/json": {
                 "schema": {
@@ -6826,17 +6831,18 @@
         }
       }
     },
-    "/agent/appointments/{id}/reschedule": {
+    "/internal/conversation/appointments/{id}/reschedule": {
       "post": {
         "tags": [
-          "agent"
+          "conversation"
         ],
         "summary": "Reagenda um agendamento do cliente da conversa",
-        "description": "Move o agendamento numa única operação, sem soltar o horário antigo antes de garantir o novo — não use cancelar + agendar para isso. Mantém serviço, preço e duração congelados; sem `employeeId`, fica com o mesmo funcionário. Agendamento de outro cliente responde 404. Responde 409 se o novo horário foi ocupado — reconsulte `/agent/availability`",
-        "operationId": "agentRescheduleAppointment",
+        "description": "Move o agendamento numa única operação, sem soltar o horário antigo antes de garantir o novo — não use cancelar + agendar para isso. Mantém serviço, preço e duração congelados; sem `employeeId`, fica com o mesmo funcionário. Agendamento de outro cliente responde 404. Responde 409 se o novo horário foi ocupado — reconsulte `/internal/conversation/availability`",
+        "operationId": "conversationRescheduleAppointment",
         "security": [
           {
-            "agentToken": []
+            "internalKey": [],
+            "conversationToken": []
           }
         ],
         "parameters": [
@@ -6881,7 +6887,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgentAppointment"
+                  "$ref": "#/components/schemas/ConversationAppointment"
                 }
               }
             }
@@ -6897,7 +6903,7 @@
             }
           },
           "401": {
-            "description": "Token do agente ausente, inválido ou expirado",
+            "description": "Chave interna ou token da conversa ausente, inválido ou expirado",
             "content": {
               "application/json": {
                 "schema": {

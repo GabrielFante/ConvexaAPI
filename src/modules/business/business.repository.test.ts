@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { runWithTenant } from "../../shared/tenant/tenant-context";
+import { decryptMetaCredentials } from "../integration/meta-credentials";
 import { businessRepository } from "./business.repository";
 
 const BUSINESS_ID = "11111111-1111-4111-8111-111111111111";
@@ -62,6 +63,29 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
+type StoredCredentials = { metaAccessToken?: string; metaAppSecret?: string };
+
+function upsertArgs() {
+  expect(prismaMock.businessIntegration.upsert).toHaveBeenCalledWith(
+    expect.objectContaining({
+      where: { businessId: BUSINESS_ID },
+      select: { businessId: true },
+    }),
+  );
+  const [args] = prismaMock.businessIntegration.upsert.mock
+    .calls[0] as unknown as [
+    { create: StoredCredentials; update: StoredCredentials },
+  ];
+  return args;
+}
+
+function decrypted(stored: StoredCredentials) {
+  return decryptMetaCredentials(BUSINESS_ID, {
+    metaAccessToken: stored.metaAccessToken ?? null,
+    metaAppSecret: stored.metaAppSecret ?? null,
+  });
+}
+
 describe("businessRepository — credenciais da Meta", () => {
   it("não devolve metaAccessToken ao ler a empresa", async () => {
     const business = await runWithTenant(BUSINESS_ID, () =>
@@ -80,16 +104,18 @@ describe("businessRepository — credenciais da Meta", () => {
     expect(business).not.toHaveProperty("metaAccessToken");
   });
 
-  it("grava metaAccessToken em BusinessIntegration, nunca em Business", async () => {
+  it("grava metaAccessToken cifrado em BusinessIntegration, nunca em Business", async () => {
     await runWithTenant(BUSINESS_ID, () =>
       businessRepository.update({ metaAccessToken: SECRET }),
     );
 
-    expect(prismaMock.businessIntegration.upsert).toHaveBeenCalledWith({
-      where: { businessId: BUSINESS_ID },
-      create: { businessId: BUSINESS_ID, metaAccessToken: SECRET },
-      update: { metaAccessToken: SECRET },
-      select: { businessId: true },
+    const { create, update } = upsertArgs();
+    expect(create).toEqual({ businessId: BUSINESS_ID, ...update });
+    expect(Object.keys(update)).toEqual(["metaAccessToken"]);
+    expect(update.metaAccessToken).not.toContain(SECRET);
+    expect(decrypted(update)).toEqual({
+      metaAccessToken: SECRET,
+      metaAppSecret: null,
     });
     expect(prismaMock.business.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: {} }),
@@ -139,16 +165,18 @@ describe("businessRepository — credenciais da Meta", () => {
     });
   });
 
-  it("grava metaAppSecret em BusinessIntegration, nunca em Business", async () => {
+  it("grava metaAppSecret cifrado em BusinessIntegration, nunca em Business", async () => {
     await runWithTenant(BUSINESS_ID, () =>
       businessRepository.update({ metaAppSecret: APP_SECRET }),
     );
 
-    expect(prismaMock.businessIntegration.upsert).toHaveBeenCalledWith({
-      where: { businessId: BUSINESS_ID },
-      create: { businessId: BUSINESS_ID, metaAppSecret: APP_SECRET },
-      update: { metaAppSecret: APP_SECRET },
-      select: { businessId: true },
+    const { create, update } = upsertArgs();
+    expect(create).toEqual({ businessId: BUSINESS_ID, ...update });
+    expect(Object.keys(update)).toEqual(["metaAppSecret"]);
+    expect(update.metaAppSecret).not.toContain(APP_SECRET);
+    expect(decrypted(update)).toEqual({
+      metaAccessToken: null,
+      metaAppSecret: APP_SECRET,
     });
     expect(prismaMock.business.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: {} }),
@@ -165,11 +193,10 @@ describe("businessRepository — credenciais da Meta", () => {
     );
 
     expect(prismaMock.businessIntegration.upsert).toHaveBeenCalledOnce();
-    expect(prismaMock.businessIntegration.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        update: { metaAccessToken: SECRET, metaAppSecret: APP_SECRET },
-      }),
-    );
+    expect(decrypted(upsertArgs().update)).toEqual({
+      metaAccessToken: SECRET,
+      metaAppSecret: APP_SECRET,
+    });
     expect(prismaMock.business.update).toHaveBeenCalledWith(
       expect.objectContaining({ data: { name: "Novo nome" } }),
     );

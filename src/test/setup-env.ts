@@ -3,6 +3,7 @@ const defaults: Record<string, string> = {
   DATABASE_URL: "postgresql://convexa:convexa@localhost:5432/convexa_test",
   JWT_SECRET: "chave-de-teste-com-no-minimo-32-caracteres",
   INTERNAL_API_KEY: "chave-interna-de-teste-com-32-caracteres",
+  CREDENTIALS_ENCRYPTION_KEY: "dGVzdGUtY2hhdmUtZGUtMzItYnl0ZXMtLWFlcy0yNTY",
   APP_URL: "http://localhost:5173",
   CORS_ORIGINS: "http://localhost:5173",
   DATABASE_POOL_MAX: "5",

@@ -1,6 +1,6 @@
 # Convexa API
 
-API multi-tenant de agendamento para negócios de serviço. O cliente final agenda pelo WhatsApp, um agente de IA interpreta a mensagem e esta API decide tudo sobre a agenda: calcula horário livre, detecta conflito, aplica folga, respeita jornada, feriado, férias e bloqueio, e congela preço e duração no agendamento.
+API multi-tenant de agendamento para negócios de serviço. O cliente final agenda pelo WhatsApp: o n8n orquestra a conversa (com a IA rodando dentro dele) e chama esta API, que decide tudo sobre a agenda: calcula horário livre, detecta conflito, aplica folga, respeita jornada, feriado, férias e bloqueio, e congela preço e duração no agendamento.
 
 **Stack:** Node.js · TypeScript · Express 5 · Prisma · PostgreSQL · Zod · Vitest
 
@@ -12,7 +12,7 @@ API multi-tenant de agendamento para negócios de serviço. O cliente final agen
 | ---------- | ----------------------------------- |
 | Node.js    | 20 ou superior (desenvolvido no 24) |
 | npm        | 10 ou superior                      |
-| PostgreSQL | 15 ou superior, local ou Supabase   |
+| PostgreSQL | 15 ou superior (produção usa o 16)  |
 
 A sessão do banco **precisa estar em UTC**. As colunas de instante são `timestamptz` e o driver não converte offset — fora de UTC todo horário desloca silenciosamente. A API checa isso no boot e se recusa a subir se estiver errado.
 
@@ -38,13 +38,16 @@ cp .env.example .env
 
 O `.env.example` está comentado variável por variável. O mínimo para subir local:
 
-| Variável           | O que é                                                                          |
-| ------------------ | -------------------------------------------------------------------------------- |
-| `DATABASE_URL`     | conexão do runtime                                                               |
-| `DIRECT_URL`       | conexão direta, só para `prisma migrate`                                         |
-| `JWT_SECRET`       | segredo do token do painel, mínimo 32 caracteres                                 |
-| `INTERNAL_API_KEY` | chave das rotas `/internal`, mínimo 32 caracteres, **diferente** do `JWT_SECRET` |
-| `MAIL_DRIVER`      | use `console` na máquina local                                                   |
+| Variável                     | O que é                                                                              |
+| ---------------------------- | ------------------------------------------------------------------------------------ |
+| `DATABASE_URL`               | conexão do runtime                                                                   |
+| `DIRECT_URL`                 | conexão direta, só para `prisma migrate`                                             |
+| `JWT_SECRET`                 | segredo do token do painel, mínimo 32 caracteres                                     |
+| `INTERNAL_API_KEY`           | chave das rotas `/internal`, mínimo 32 caracteres, **diferente** do `JWT_SECRET`     |
+| `CREDENTIALS_ENCRYPTION_KEY` | cifra as credenciais da Meta no banco: 32 bytes em base64, diferente dos outros dois |
+| `MAIL_DRIVER`                | use `console` na máquina local                                                       |
+
+A `CREDENTIALS_ENCRYPTION_KEY` é exigida em qualquer ambiente. Perder ou trocar a chave torna ilegíveis as credenciais já gravadas, e a empresa precisa cadastrá-las de novo. Credenciais gravadas antes da chave existir são cifradas com `npm run credentials:encrypt`.
 
 Gere cada segredo com:
 
@@ -54,7 +57,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
 
 Dois detalhes que costumam morder:
 
-- **No Supabase, use a porta 5432 (session pooler), não a 6543.** O Scheduling Engine usa transação interativa com isolamento `Serializable`, que não sobrevive ao pooling por transação. A 6543 quebra o agendamento sob concorrência.
+- **Não use pooler em modo transação** (como a porta 6543 do Supabase). O Scheduling Engine usa transação interativa com isolamento `Serializable`, que não sobrevive ao pooling por transação e quebra o agendamento sob concorrência. Conexão direta ou pooler em modo sessão funcionam.
 - `MAIL_DRIVER=console` imprime o e-mail no terminal, **incluindo o link de redefinição de senha com token válido**. Só na máquina local — em produção a API recusa subir com ele.
 
 ---
@@ -127,13 +130,28 @@ A documentação fica disponível fora de produção por padrão. Controle com `
 
 ## Autenticação
 
-Três superfícies distintas:
+Só dois consumidores falam com a API: o **painel** e o **n8n**. A IA roda dentro do n8n e nunca chama a API nem recebe credencial.
 
-- **`/api/auth/*` públicas** — `register`, `login`, `refresh`, `forgot-password` e `reset-password` não exigem token.
-- **`/api/*`** — exigem `Authorization: Bearer <accessToken>`. O tenant sai do próprio token; não existe header de empresa.
-- **`/internal/*`** — exigem o header `x-internal-key`. É a superfície do orquestrador, usada antes de existir um usuário logado.
+| Superfície                 | Quem usa | Credencial                                                                                         |
+| -------------------------- | -------- | -------------------------------------------------------------------------------------------------- |
+| `/api/auth/*` públicas     | painel   | nenhuma (`register`, `login`, `refresh`, `forgot-password`, `reset-password`)                      |
+| `/api/*`                   | painel   | `Authorization: Bearer <accessToken>`. O tenant sai do próprio token; não existe header de empresa |
+| `/internal/*`              | n8n      | header `x-internal-key`                                                                            |
+| `/internal/conversation/*` | n8n      | `x-internal-key` **e** `Authorization: Bearer <token da conversa>`                                 |
 
 Para começar do zero, `POST /api/auth/register` cria a empresa e o usuário dono de uma vez, já devolvendo uma sessão autenticada.
+
+### Fluxo do n8n
+
+A cada mensagem do WhatsApp, o n8n abre uma sessão com `POST /internal/conversation/session` (`phoneNumberId`, telefone e nome de quem escreveu). A API resolve a empresa pelo número da Meta, faz o upsert do cliente e devolve um token de 5 minutos que amarra os dois, além do `now` no fuso da empresa.
+
+Com a chave e esse token, o n8n chama as rotas de agenda: `services`, `availability`, `appointments` (listar e agendar), `appointments/:id/cancel` e `appointments/:id/reschedule`, todas sob `/internal/conversation`. Nenhuma recebe `businessId` ou `customerId`: os dois saem do token, então não há como agir em nome de outra empresa ou de outro cliente. A IA só interpreta a mensagem e diz a intenção; quem faz a requisição é o n8n.
+
+Para enviar a resposta, o n8n consome a cota em `POST /internal/messages/quota` e busca o token da Meta em `GET /internal/integrations/by-phone-number-id/:phoneNumberId`. O passo a passo, com o que fazer em cada erro, está em `/docs`, na seção "Fluxo do n8n". `scripts/simulate-n8n.mjs` percorre esse fluxo inteiro contra uma API no ar:
+
+```bash
+INTERNAL_API_KEY=... node scripts/simulate-n8n.mjs http://localhost:3000 --phone-number-id <id> --phone <telefone>
+```
 
 ---
 
@@ -149,10 +167,13 @@ src/
     timeblock/    bloqueios pontuais de agenda
     appointment/  agendamentos
     scheduling/   Scheduling Engine e disponibilidade
+    conversation/ rotas de agenda do n8n, amarradas ao cliente da conversa
+    integration/  credenciais da Meta de cada empresa, cifradas em repouso
+    quota/        cota mensal de mensagens
     auth/         sessão, refresh token, redefinição de senha
   shared/         infraestrutura: middleware, erros, banco, validação, OpenAPI
 prisma/           schema e migrations
-scripts/          utilitários de build
+scripts/          openapi.json, simulação do n8n, checagem do staging, cifra das credenciais
 ```
 
 Cada módulo segue `routes → controller → service → repository`.

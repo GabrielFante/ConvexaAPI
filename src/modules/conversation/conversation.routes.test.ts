@@ -75,16 +75,23 @@ let tenantSeenByResolve: string | undefined;
 
 async function openSession() {
   const response = await request(app)
-    .post("/internal/agent-sessions")
+    .post("/internal/conversation/session")
     .set("x-internal-key", env.INTERNAL_API_KEY)
     .send({ phoneNumberId: "111111111", phone: "11 99999-9999", name: "João" });
 
   return response;
 }
 
-async function agentAuth() {
+async function conversationToken() {
   const { body } = await openSession();
   return `Bearer ${body.token as string}`;
+}
+
+async function conversationHeaders() {
+  return {
+    "x-internal-key": env.INTERNAL_API_KEY,
+    authorization: await conversationToken(),
+  };
 }
 
 beforeEach(() => {
@@ -125,10 +132,10 @@ beforeEach(() => {
   });
 });
 
-describe("POST /internal/agent-sessions", () => {
+describe("POST /internal/conversation/session", () => {
   it("exige a chave interna", async () => {
     const response = await request(app)
-      .post("/internal/agent-sessions")
+      .post("/internal/conversation/session")
       .send({ phoneNumberId: "111111111", phone: "11999999999" });
 
     expect(response.status).toBe(401);
@@ -178,7 +185,7 @@ describe("POST /internal/agent-sessions", () => {
 
   it("recusa telefone inválido", async () => {
     const response = await request(app)
-      .post("/internal/agent-sessions")
+      .post("/internal/conversation/session")
       .set("x-internal-key", env.INTERNAL_API_KEY)
       .send({ phoneNumberId: "111111111", phone: "123" });
 
@@ -187,44 +194,74 @@ describe("POST /internal/agent-sessions", () => {
   });
 });
 
-describe("autenticação em /agent", () => {
-  it("recusa requisição sem token", async () => {
-    const response = await request(app).get("/agent/services");
+describe("autenticação em /internal/conversation", () => {
+  it("recusa requisição sem chave e sem token", async () => {
+    const response = await request(app).get("/internal/conversation/services");
 
     expect(response.status).toBe(401);
   });
 
-  it("recusa o token do painel", async () => {
+  it("recusa o token da conversa sem a chave interna", async () => {
     const response = await request(app)
-      .get("/agent/services")
+      .get("/internal/conversation/services")
+      .set("authorization", await conversationToken());
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toBe("Chave interna inválida");
+    expect(mocks.service.list).not.toHaveBeenCalled();
+  });
+
+  it("recusa o token da conversa com chave errada", async () => {
+    const response = await request(app)
+      .get("/internal/conversation/services")
+      .set("authorization", await conversationToken())
+      .set("x-internal-key", "x".repeat(40));
+
+    expect(response.status).toBe(401);
+    expect(mocks.service.list).not.toHaveBeenCalled();
+  });
+
+  it("a chave interna sozinha não abre as rotas da conversa", async () => {
+    const response = await request(app)
+      .get("/internal/conversation/services")
+      .set("x-internal-key", env.INTERNAL_API_KEY);
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).toBe("Token da conversa ausente");
+  });
+
+  it("recusa o token do painel mesmo com a chave interna", async () => {
+    const response = await request(app)
+      .get("/internal/conversation/services")
+      .set("x-internal-key", env.INTERNAL_API_KEY)
       .set("authorization", bearer());
 
     expect(response.status).toBe(401);
     expect(mocks.service.list).not.toHaveBeenCalled();
   });
 
-  it("o token do agente não abre as rotas do painel", async () => {
+  it("o token da conversa não abre as rotas do painel", async () => {
     const response = await request(app)
       .get("/api/customers")
-      .set("authorization", await agentAuth());
+      .set("authorization", await conversationToken());
 
     expect(response.status).toBe(401);
   });
 
-  it("a chave interna sozinha não abre as tools", async () => {
+  it("a superfície antiga /agent não existe mais", async () => {
     const response = await request(app)
       .get("/agent/services")
-      .set("x-internal-key", env.INTERNAL_API_KEY);
+      .set("authorization", await conversationToken());
 
-    expect(response.status).toBe(401);
+    expect(response.status).toBe(404);
   });
 });
 
-describe("tools do agente", () => {
+describe("rotas da conversa", () => {
   it("lista os serviços sem campos internos", async () => {
     const response = await request(app)
-      .get("/agent/services")
-      .set("authorization", await agentAuth());
+      .get("/internal/conversation/services")
+      .set(await conversationHeaders());
 
     expect(response.status).toBe(200);
     expect(response.body).toEqual([
@@ -248,8 +285,10 @@ describe("tools do agente", () => {
     });
 
     const response = await request(app)
-      .get(`/agent/availability?serviceId=${SERVICE}&date=2026-09-23`)
-      .set("authorization", await agentAuth());
+      .get(
+        `/internal/conversation/availability?serviceId=${SERVICE}&date=2026-09-23`,
+      )
+      .set(await conversationHeaders());
 
     expect(response.status).toBe(200);
     expect(mocks.engine.getAvailability).toHaveBeenCalledWith({
@@ -277,8 +316,10 @@ describe("tools do agente", () => {
 
   it("recusa limit acima de 10", async () => {
     const response = await request(app)
-      .get(`/agent/availability?serviceId=${SERVICE}&date=2026-09-23&limit=11`)
-      .set("authorization", await agentAuth());
+      .get(
+        `/internal/conversation/availability?serviceId=${SERVICE}&date=2026-09-23&limit=11`,
+      )
+      .set(await conversationHeaders());
 
     expect(response.status).toBe(400);
     expect(mocks.engine.getAvailability).not.toHaveBeenCalled();
@@ -288,8 +329,8 @@ describe("tools do agente", () => {
     mocks.engine.createAppointment.mockResolvedValue(appointment());
 
     const response = await request(app)
-      .post("/agent/appointments")
-      .set("authorization", await agentAuth())
+      .post("/internal/conversation/appointments")
+      .set(await conversationHeaders())
       .send({
         serviceId: SERVICE,
         employeeId: EMPLOYEE,
@@ -325,8 +366,8 @@ describe("tools do agente", () => {
     );
 
     const response = await request(app)
-      .post("/agent/appointments")
-      .set("authorization", await agentAuth())
+      .post("/internal/conversation/appointments")
+      .set(await conversationHeaders())
       .send({
         serviceId: SERVICE,
         employeeId: EMPLOYEE,
@@ -351,8 +392,8 @@ describe("tools do agente", () => {
     ]);
 
     const response = await request(app)
-      .get("/agent/appointments")
-      .set("authorization", await agentAuth());
+      .get("/internal/conversation/appointments")
+      .set(await conversationHeaders());
 
     expect(response.status).toBe(200);
     expect(mocks.engine.listAppointments).toHaveBeenCalledWith({
@@ -372,8 +413,8 @@ describe("tools do agente", () => {
     );
 
     const response = await request(app)
-      .post(`/agent/appointments/${APPOINTMENT}/cancel`)
-      .set("authorization", await agentAuth());
+      .post(`/internal/conversation/appointments/${APPOINTMENT}/cancel`)
+      .set(await conversationHeaders());
 
     expect(response.status).toBe(200);
     expect(response.body.status).toBe("CANCELLED");
@@ -386,8 +427,8 @@ describe("tools do agente", () => {
     );
 
     const response = await request(app)
-      .post(`/agent/appointments/${APPOINTMENT}/cancel`)
-      .set("authorization", await agentAuth());
+      .post(`/internal/conversation/appointments/${APPOINTMENT}/cancel`)
+      .set(await conversationHeaders());
 
     expect(response.status).toBe(404);
     expect(response.body.code).toBe("APPOINTMENT_NOT_FOUND");
@@ -395,7 +436,7 @@ describe("tools do agente", () => {
   });
 });
 
-describe("POST /agent/appointments/:id/reschedule", () => {
+describe("POST /internal/conversation/appointments/:id/reschedule", () => {
   const NEW_START = "2026-09-24T19:00:00.000Z";
   const OTHER_EMPLOYEE = "66666666-2222-4222-8222-222222222222";
 
@@ -409,8 +450,8 @@ describe("POST /agent/appointments/:id/reschedule", () => {
     );
 
     const response = await request(app)
-      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
-      .set("authorization", await agentAuth())
+      .post(`/internal/conversation/appointments/${APPOINTMENT}/reschedule`)
+      .set(await conversationHeaders())
       .send({ startAt: NEW_START });
 
     expect(response.status).toBe(200);
@@ -435,8 +476,8 @@ describe("POST /agent/appointments/:id/reschedule", () => {
     );
 
     await request(app)
-      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
-      .set("authorization", await agentAuth())
+      .post(`/internal/conversation/appointments/${APPOINTMENT}/reschedule`)
+      .set(await conversationHeaders())
       .send({ startAt: NEW_START, employeeId: OTHER_EMPLOYEE });
 
     expect(mocks.engine.rescheduleAppointment).toHaveBeenCalledWith(
@@ -451,8 +492,8 @@ describe("POST /agent/appointments/:id/reschedule", () => {
     );
 
     const response = await request(app)
-      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
-      .set("authorization", await agentAuth())
+      .post(`/internal/conversation/appointments/${APPOINTMENT}/reschedule`)
+      .set(await conversationHeaders())
       .send({ startAt: NEW_START });
 
     expect(response.status).toBe(404);
@@ -467,8 +508,8 @@ describe("POST /agent/appointments/:id/reschedule", () => {
     );
 
     const response = await request(app)
-      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
-      .set("authorization", await agentAuth())
+      .post(`/internal/conversation/appointments/${APPOINTMENT}/reschedule`)
+      .set(await conversationHeaders())
       .send({ startAt: NEW_START });
 
     expect(response.status).toBe(409);
@@ -477,17 +518,18 @@ describe("POST /agent/appointments/:id/reschedule", () => {
 
   it("recusa corpo sem startAt", async () => {
     const response = await request(app)
-      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
-      .set("authorization", await agentAuth())
+      .post(`/internal/conversation/appointments/${APPOINTMENT}/reschedule`)
+      .set(await conversationHeaders())
       .send({});
 
     expect(response.status).toBe(400);
     expect(mocks.engine.getAppointment).not.toHaveBeenCalled();
   });
 
-  it("exige o token do agente", async () => {
+  it("exige o token da conversa", async () => {
     const response = await request(app)
-      .post(`/agent/appointments/${APPOINTMENT}/reschedule`)
+      .post(`/internal/conversation/appointments/${APPOINTMENT}/reschedule`)
+      .set("x-internal-key", env.INTERNAL_API_KEY)
       .set("authorization", bearer())
       .send({ startAt: NEW_START });
 
