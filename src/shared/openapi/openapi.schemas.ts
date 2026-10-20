@@ -208,7 +208,7 @@ const wallClockFields = {
   time: z.string().describe("Hora de parede no fuso do negócio, HH:MM"),
 };
 
-export const agentSessionSchema = z.object({
+export const conversationSessionSchema = z.object({
   token: z.string(),
   tokenType: z.literal("Bearer"),
   expiresIn: z.int(),
@@ -221,14 +221,14 @@ export const agentSessionSchema = z.object({
   now: z.object(wallClockFields),
 });
 
-export const agentServiceSchema = z.object({
+export const conversationServiceSchema = z.object({
   id,
   name: z.string(),
   durationMinutes: z.int(),
   priceCents: z.int(),
 });
 
-export const agentAvailabilitySchema = z.object({
+export const conversationAvailabilitySchema = z.object({
   date: z.string(),
   weekday: z.string(),
   serviceId: id,
@@ -245,7 +245,7 @@ export const agentAvailabilitySchema = z.object({
   ),
 });
 
-export const agentAppointmentSchema = z.object({
+export const conversationAppointmentSchema = z.object({
   id,
   status: appointmentStatusSchema,
   startAt: instant,

@@ -1,10 +1,10 @@
 import {
-  AGENT_TOKEN_TTL_SECONDS,
-  signAgentToken,
-} from "../../shared/auth/agent-token";
+  CONVERSATION_TOKEN_TTL_SECONDS,
+  signConversationToken,
+} from "../../shared/auth/conversation-token";
 import { AppError } from "../../shared/errors/AppError";
 import {
-  getCurrentAgent,
+  getCurrentConversation,
   runWithTenant,
 } from "../../shared/tenant/tenant-context";
 import {
@@ -20,11 +20,11 @@ import { employeeService } from "../employee/employee.service";
 import { schedulingEngine } from "../scheduling/scheduling.engine";
 import { serviceService } from "../service/service.service";
 import type {
-  AgentAvailabilityQuery,
-  AgentBookInput,
-  AgentRescheduleInput,
-  AgentSessionInput,
-} from "./agent.schema";
+  ConversationAvailabilityQuery,
+  ConversationBookInput,
+  ConversationRescheduleInput,
+  ConversationSessionInput,
+} from "./conversation.schema";
 
 const WEEKDAYS = [
   "domingo",
@@ -60,7 +60,10 @@ function wallClock(instant: Date, timezone: string) {
   };
 }
 
-function toAgentAppointment(appointment: EngineAppointment, timezone: string) {
+function toConversationAppointment(
+  appointment: EngineAppointment,
+  timezone: string,
+) {
   return {
     id: appointment.id,
     status: appointment.status,
@@ -75,7 +78,7 @@ function toAgentAppointment(appointment: EngineAppointment, timezone: string) {
 }
 
 async function loadOwnAppointment(id: string) {
-  const { customerId } = getCurrentAgent();
+  const { customerId } = getCurrentConversation();
   const appointment = await schedulingEngine.getAppointment(id);
 
   if (appointment.customerId !== customerId) {
@@ -89,8 +92,12 @@ async function loadOwnAppointment(id: string) {
   return appointment;
 }
 
-export const agentService = {
-  async createSession({ phoneNumberId, phone, name }: AgentSessionInput) {
+export const conversationService = {
+  async createSession({
+    phoneNumberId,
+    phone,
+    name,
+  }: ConversationSessionInput) {
     const tenant =
       await businessService.resolveByMetaPhoneNumberId(phoneNumberId);
     const customer = await runWithTenant(tenant.businessId, () =>
@@ -98,13 +105,13 @@ export const agentService = {
     );
 
     return {
-      token: signAgentToken({
+      token: signConversationToken({
         customerId: customer.id,
         businessId: tenant.businessId,
         timezone: tenant.timezone,
       }),
       tokenType: "Bearer",
-      expiresIn: AGENT_TOKEN_TTL_SECONDS,
+      expiresIn: CONVERSATION_TOKEN_TTL_SECONDS,
       business: {
         id: tenant.businessId,
         name: tenant.name,
@@ -126,8 +133,8 @@ export const agentService = {
     }));
   },
 
-  async availability(query: AgentAvailabilityQuery) {
-    const { timezone } = getCurrentAgent();
+  async availability(query: ConversationAvailabilityQuery) {
+    const { timezone } = getCurrentConversation();
     const [result, employees] = await Promise.all([
       schedulingEngine.getAvailability(query),
       employeeService.list(ALL_ACTIVE),
@@ -151,7 +158,7 @@ export const agentService = {
   },
 
   async listAppointments() {
-    const { customerId, timezone } = getCurrentAgent();
+    const { customerId, timezone } = getCurrentConversation();
     const appointments = await schedulingEngine.listAppointments({
       customerId,
       from: new Date(),
@@ -159,36 +166,36 @@ export const agentService = {
 
     return appointments
       .filter(({ status }) => ACTIVE_STATUSES.has(status))
-      .map((appointment) => toAgentAppointment(appointment, timezone));
+      .map((appointment) => toConversationAppointment(appointment, timezone));
   },
 
-  async book(input: AgentBookInput) {
-    const { customerId, timezone } = getCurrentAgent();
+  async book(input: ConversationBookInput) {
+    const { customerId, timezone } = getCurrentConversation();
     const appointment = await schedulingEngine.createAppointment({
       ...input,
       customerId,
     });
 
-    return toAgentAppointment(appointment, timezone);
+    return toConversationAppointment(appointment, timezone);
   },
 
   async cancel(id: string) {
-    const { timezone } = getCurrentAgent();
+    const { timezone } = getCurrentConversation();
 
     await loadOwnAppointment(id);
 
     const cancelled = await schedulingEngine.cancelAppointment(id);
 
-    return toAgentAppointment(cancelled, timezone);
+    return toConversationAppointment(cancelled, timezone);
   },
 
-  async reschedule(id: string, input: AgentRescheduleInput) {
-    const { timezone } = getCurrentAgent();
+  async reschedule(id: string, input: ConversationRescheduleInput) {
+    const { timezone } = getCurrentConversation();
 
     await loadOwnAppointment(id);
 
     const rescheduled = await schedulingEngine.rescheduleAppointment(id, input);
 
-    return toAgentAppointment(rescheduled, timezone);
+    return toConversationAppointment(rescheduled, timezone);
   },
 };

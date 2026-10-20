@@ -17,9 +17,9 @@ import { timeBlockRoutes } from "../../modules/timeblock/timeblock.routes";
 import { appointmentRoutes } from "../../modules/appointment/appointment.routes";
 import { schedulingRoutes } from "../../modules/scheduling/scheduling.routes";
 import {
-  agentInternalRoutes,
-  agentRoutes,
-} from "../../modules/agent/agent.routes";
+  conversationRoutes,
+  conversationSessionRoutes,
+} from "../../modules/conversation/conversation.routes";
 import {
   quotaInternalRoutes,
   quotaRoutes,
@@ -44,8 +44,8 @@ const mounted: { prefix: string; router: Router }[] = [
   { prefix: "/api", router: timeBlockRoutes },
   { prefix: "/api", router: appointmentRoutes },
   { prefix: "/api", router: schedulingRoutes },
-  { prefix: "/internal", router: agentInternalRoutes },
-  { prefix: "/agent", router: agentRoutes },
+  { prefix: "/internal", router: conversationSessionRoutes },
+  { prefix: "/internal/conversation", router: conversationRoutes },
   { prefix: "/internal", router: quotaInternalRoutes },
   { prefix: "/api", router: quotaRoutes },
   { prefix: "/internal", router: integrationInternalRoutes },
