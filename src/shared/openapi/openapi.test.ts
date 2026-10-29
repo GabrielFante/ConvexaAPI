@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import request from "supertest";
 import type { Router } from "express";
 import { app } from "../../app";
+import { env } from "../env";
 import {
   authPrivateRoutes,
   authPublicRoutes,
@@ -154,6 +155,32 @@ describe("documento OpenAPI", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers["content-type"]).toContain("text/html");
+  });
+
+  it("exige a chave interna para servir a spec ao n8n", async () => {
+    const response = await request(app).get("/internal/docs/openapi.json");
+
+    expect(response.status).toBe(401);
+  });
+
+  it("serve a spec ao n8n com a chave interna", async () => {
+    const response = await request(app)
+      .get("/internal/docs/openapi.json")
+      .set("x-internal-key", env.INTERNAL_API_KEY);
+
+    expect(response.status).toBe(200);
+    expect(response.body.openapi).toBe("3.0.3");
+    expect(Object.keys(response.body.paths).length).toBeGreaterThan(0);
+  });
+
+  it("aponta servers para a URL absoluta de quem atendeu", async () => {
+    const response = await request(app)
+      .get("/internal/docs/openapi.json")
+      .set("x-internal-key", env.INTERNAL_API_KEY)
+      .set("x-forwarded-proto", "https")
+      .set("host", "api.exemplo.com");
+
+    expect(response.body.servers[0].url).toBe("https://api.exemplo.com");
   });
 
   it("relaxa o CSP apenas na interface, não no resto da API", async () => {

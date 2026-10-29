@@ -111,6 +111,8 @@ npm run openapi:gen    # grava openapi.json na raiz
 
 A documentação fica disponível fora de produção por padrão. Controle com `DOCS_ENABLED=true|false`.
 
+Na API publicada, o n8n lê a spec em `GET /internal/docs/openapi.json` com a `x-internal-key`. Essa rota existe em qualquer ambiente, independente de `DOCS_ENABLED`, e devolve `servers` com a URL absoluta de quem atendeu.
+
 ---
 
 ## Comandos
