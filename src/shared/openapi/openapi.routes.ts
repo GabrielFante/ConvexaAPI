@@ -1,4 +1,5 @@
 import { Router } from "express";
+import type { RequestHandler } from "express";
 import helmet from "helmet";
 import swaggerUi from "swagger-ui-express";
 import { buildOpenApiDocument } from "./openapi.document";
@@ -17,11 +18,25 @@ const docsContentSecurityPolicy = helmet.contentSecurityPolicy({
   },
 });
 
+const serveDocument: RequestHandler = (req, res) => {
+  res.json({
+    ...document,
+    servers: [
+      {
+        url: `${req.protocol}://${req.get("host")}`,
+        description: "Servidor atual",
+      },
+    ],
+  });
+};
+
 export const openApiRoutes = Router();
 
-openApiRoutes.get("/docs/openapi.json", (_req, res) => {
-  res.json(document);
-});
+openApiRoutes.get("/docs/openapi.json", serveDocument);
+
+export const openApiInternalRoutes = Router();
+
+openApiInternalRoutes.get("/docs/openapi.json", serveDocument);
 
 openApiRoutes.use(
   "/docs",

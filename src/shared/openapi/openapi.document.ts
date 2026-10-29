@@ -223,7 +223,11 @@ Mande \`X-Request-Id\` (até 128 caracteres: letras, números, \`.\`, \`_\`, \`:
 
 ## Fluxo do n8n
 
-A API não recebe nem envia mensagens e não fala com a IA. O n8n orquestra: a IA, dentro do n8n, só interpreta a mensagem e diz qual ação o cliente quer; quem faz a requisição HTTP é sempre o n8n. A \`x-internal-key\` e o token da conversa nunca entram no prompt nem são enviados ao provedor de IA. Para cada mensagem do WhatsApp, o n8n:
+A API não recebe nem envia mensagens e não fala com a IA. O n8n orquestra: a IA, dentro do n8n, só interpreta a mensagem e diz qual ação o cliente quer; quem faz a requisição HTTP é sempre o n8n. A \`x-internal-key\` e o token da conversa nunca entram no prompt nem são enviados ao provedor de IA.
+
+Em produção esta interface fica desligada; o n8n lê a spec em \`GET /internal/docs/openapi.json\` com a \`x-internal-key\`.
+
+Para cada mensagem do WhatsApp, o n8n:
 
 1. Valida o webhook da Meta (assinatura, duplicata, \`statuses[]\`) — tudo no n8n.
 2. \`POST /internal/conversation/session\` com \`phoneNumberId\`, telefone e nome de quem escreveu. Guarda o \`token\` (5 minutos) e repassa \`now\` à IA para ela entender "hoje" e "amanhã".

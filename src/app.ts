@@ -5,7 +5,10 @@ import rateLimit from "express-rate-limit";
 import { docsEnabled, env } from "./shared/env";
 import { AppError } from "./shared/errors/AppError";
 import { healthRoutes } from "./shared/health/health.routes";
-import { openApiRoutes } from "./shared/openapi/openapi.routes";
+import {
+  openApiInternalRoutes,
+  openApiRoutes,
+} from "./shared/openapi/openapi.routes";
 import { conversationAuthMiddleware } from "./shared/middleware/conversation-auth";
 import { authMiddleware } from "./shared/middleware/auth";
 import { internalKeyMiddleware } from "./shared/middleware/internal-key";
@@ -97,6 +100,7 @@ app.use(
   conversationSessionRoutes,
   quotaInternalRoutes,
   integrationInternalRoutes,
+  openApiInternalRoutes,
 );
 app.use(
   "/internal/conversation",
