@@ -10,6 +10,8 @@ A main foi integrada a esta branch até e3d6866 (PR #1, 85e5b9d). Nenhum commit 
 
 Em 20/10/2026 a main foi integrada de novo, até 77b68fe. Entram a cifra das credenciais da Meta (457d516) e a mudança das rotas de agenda do n8n para `/internal/conversation/*` (a62b827). **Antes do próximo Deploy manual, a variável `CREDENTIALS_ENCRYPTION_KEY` precisa existir no Environment do Dokploy**: 32 bytes em base64, gerada à parte e diferente do `JWT_SECRET` e da `INTERNAL_API_KEY`. Sem ela o Compose recusa subir. Guarde a chave com cuidado, porque perdê-la ou trocá-la torna ilegíveis as credenciais já gravadas. A imagem de runtime não traz o `npm run credentials:encrypt`; se o staging já tiver credenciais da Meta gravadas em texto puro, cadastre-as de novo via `PATCH /api/business` depois do deploy. Esta integração não traz migration nova.
 
+Em 29/10/2026 o staging ainda rodava uma versão anterior a a62b827: `GET /agent/services` respondia 401 "Token do agente ausente", então o n8n, que segue o contrato de `/internal/conversation/*`, batia em rota que não existe lá. `/docs` respondia 404 porque o Compose sobe com `NODE_ENV=production` e não repassa `DOCS_ENABLED`. A main foi integrada até eef4fad, que adiciona `GET /internal/docs/openapi.json`: a mesma spec, atrás da `x-internal-key`, montada em qualquer ambiente e com `servers` apontando para a URL pública. O Compose não muda, e o Swagger UI continua desligado no staging. Os dois problemas só somem depois do próximo Deploy manual. Para conferir: `/agent/services` passa a dar 404, e `/internal/docs/openapi.json` com a chave dá 200.
+
 Resend continua dispensado: com PASSWORD_RESET_ENABLED=false e sem MAIL_DRIVER, a validação de ambiente não exige RESEND_API_KEY.
 
 ## Verificação reproduzível
